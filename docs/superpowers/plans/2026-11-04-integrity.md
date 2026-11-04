@@ -20,3 +20,16 @@ Spec: user request in this session (five fixes, regression tests first, original
 
 ## Review focus
 Metadata must not be inferred from a filename or row body. Unexpected database extensions must survive migration or abort safely. Conflicting imports must quarantine rather than overwrite. Revalidation must not promote unsupported legacy provenance. Stale errors and delayed JSON must not mutate current browser state.
+
+## Execution record
+- Counts/names RED → GREEN: original 7 retained; 14 tests passed after first fix.
+- Metadata RED → GREEN: 20 tests passed.
+- Persistence/migration RED → GREEN: 29 tests passed.
+- Publication/API RED → GREEN: 33 tests passed.
+- Frontend RED → GREEN: 4 Node regressions passed; Python suite remained green.
+- Supplied files received and working copies prepared; original313 values fingerprint identical after migration/audits, 311 passed/2 reviewed.
+- Independent review: six important findings reproduced and fixed with RED → GREEN tests; dependent views, ambiguous College review, and malformed legacy values included.
+- Final suite: Python43/43 and Node4/4; real PDF and HTTP integration checks passed as recorded in docs/integrity-verification.md.
+- Ruling: Unknown uncoded colleges are rejected until a reviewed code/name mapping is added — supplied PDF verifies only AT — wider ingestion waits for official fixtures.
+- Ruling: Legacy CSVs remain archival evidence and a separate public CSV is refreshed — prevents overwriting user files — consumers must switch to public_grade_sections.csv or the public view.
+- Ruling: Uncertain/page-spanning rows and import conflicts remain quarantined — original evidence takes priority over inferred correction — some valid records may require manual resolution.

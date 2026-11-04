@@ -1,8 +1,8 @@
 # MaroonWay — Phase 1 (beginner starter kit)
 
-**Goal:** Make a trustworthy database of Spring 2026 **undergraduate (100–499) STAT and MATH** historical grade-section records from the **Texas A&M Registrar's official grade distribution report**. The project includes a local course-search and section-comparison UI. RMP ratings and automatic professor matching are deferred.
+**Goal:** Build a trustworthy database of Texas A&M historical **undergraduate (100–499) grade-section records across all subjects** for **Fall 2023 through Spring 2026, excluding Summer**, using the Registrar's Grade Distribution reports. The project includes a local course-search and section-comparison UI. RMP ratings and automatic professor matching are deferred.
 
-This kit contains **working starter code**, NOT predownloaded TAMU data. The authoring environment could not access the actual PDF file, so the parser has been tested against *synthetic report-format examples*, not verified on the Spring 2026 Registrar PDF. **You must verify the first 10–20 extracted rows against the original PDF before using the data.**
+The repository does not distribute a prebuilt database or source PDFs. The supplied Spring 2026 Arts & Sciences PDF has been exercised in an integration smoke test, and the supplied 313-record database was revalidated: **311 passed; 2 require review**. See [the verification report](docs/integrity-verification.md). Other terms and colleges require their own verified source PDFs; support for the date range does not mean those datasets are populated. **Compare 10–20 extracted rows against the original PDF before using the data.**
 
 ## 1. Install Python (only once)
 
@@ -45,42 +45,71 @@ python pipeline.py download
 
 If the download fails (website blocks it or changes), use the manual browser method. Do not bypass access protections.
 
-## 4. Turn the PDF into a database
+## 4. Preserve and revalidate an existing database
+
+If you already have `data/maroonway.db`, **do not delete or reset it**. Stop import/review writers, then run from the repository root (Windows: replace `python` with `py`):
+
+```bash
+python pipeline.py revalidate --pdf reports/spring_2026_arts_and_sciences.pdf
+```
+
+This backs up the existing database as `data/maroonway.before-v2-<unique-id>.db` before its first v2 migration. It retains every original row, ID, source field, professor link, and manual-review column. The migration removes the old STAT/MATH-only constraint and adds separate source/import/audit tables and a public view. It does not overwrite original values or mark a professor identity as verified.
+
+Each audit writes an immutable CSV under `data/validation_runs/` and reports total/passed/review counts. It verifies the original PDF hash and metadata, numeric checks, and each stored section's fields/page against a fresh extraction. Without the matching PDF, legacy rows remain unpublished. You can use `--db path/to/database.db` to target another existing database. Never substitute a sample DB for your real data.
+
+Repeat the command to audit again; original rows and earlier audit files remain intact. Revalidation refreshes `data/public_grade_sections.csv` with only currently validated rows, including an empty snapshot when none qualify. A raw legacy `quality_status` value alone is not publication approval: use `public_grade_sections` for application queries.
+
+## 5. Import a report
 
 ```bash
 python pipeline.py import-pdf
 python pipeline.py show
 ```
 
+The default command is for Spring 2026 Arts & Sciences. For a different supported term/college, supply the expected metadata explicitly:
+
+```bash
+python pipeline.py import-pdf reports/fall_2023_arts_and_sciences.pdf --year 2023 --semester FALL --college AT --college-name "Arts & Sciences"
+```
+
+Supported terms: `2023-FALL`, `2024-SPRING`, `2024-FALL`, `2025-SPRING`, `2025-FALL`, `2026-SPRING`. Summer and out-of-range terms are rejected. Every nonblank PDF page must have a recognized Grade Distribution report header with the requested term and College; GPA Distribution, mismatches, and unknown layouts stop import before DB changes. Filenames are not evidence.
+
+For uncoded College headers, a reviewed code/name mapping is required in `report_metadata.py` (`AT` / Arts & Sciences is verified against the supplied PDF). An explicit code/name header must match both requested values. Add official header fixtures and a reviewed mapping before accepting another uncoded college. Do not bypass validation to add a college. The legacy `download` command remains a Spring 2026 Arts & Sciences convenience; obtain other reports from the official form.
+
+Each successful import retains all undergraduate subjects found in that report. Existing section identities are never overwritten: conflicts are recorded and quarantined pending manual resolution, including on later repeat imports. No automatic conflict-resolution command is provided.
+
 This creates:
 
 | File | Meaning |
 | --- | --- |
 | `data/maroonway.db` | SQLite database (can query later with SQL) |
-| `data/grade_sections.csv` | Parsed grade records, one row per course section |
-| `data/quality_review.csv` | Rows/values to inspect by hand |
+| `data/public_grade_sections.csv` | Current validated public snapshot, with College and source hash |
+| `data/import_reviews/<unique-run-id>.csv` | Review items preserved for each import |
+| `data/sources/<sha256>.pdf` | Preserved input PDF; bytes also retained in SQLite |
+| `data/validation_runs/<unique-run-id>.csv` | Review results for each revalidation |
 
-Read `quality_review.csv` **before** trusting any database entries. Every record includes `source_page` and a `source_url` so you can check the original PDF.
+Inspect the import/audit CSVs before trusting results. Legacy `grade_sections.csv`, `grade_sections_reviewed.csv`, and `quality_review.csv` are preserved as historical evidence, not refreshed as public output. Import and validation manifests, row snapshots, issues, and conflicts are also retained in SQLite. Each source record preserves its page, URL, hash, and original extracted text.
 
-## 5. Test the code on sample patterns first
+## 6. Run regression tests
 
 ```bash
 python -m unittest discover -s tests -v
+node tests/test_frontend.cjs
 ```
 
-These tests use **fictional** instructors and grades. The sample values are not claims about real TAMU classes. The current suite covers parser patterns only; it does not verify the API, browser UI, full PDF import workflow, or compatibility with the official report. A passing suite is not certification of imported data.
+Regression tests use fictional data and temporary databases, including generated PDFs. They cover count/name parsing, metadata rejection, migration preservation, import history, publication filters, API query behavior, and out-of-order frontend requests. Node.js 18+ is needed only for the frontend tests; the UI itself runs in the browser. These are not full browser end-to-end tests or proof of compatibility with every TAMU report layout. A passing suite does not replace source review.
 
-## 6. Check quality manually
+## 7. Check quality manually
 
 Before trusting or sharing data through the website:
 
-1. Compare **at least 10–20 random rows** in `grade_sections.csv` to the original PDF (course, section, semester, instructor text, each A–F count, GPA, report page).
-2. Inspect every row in `quality_review.csv`, especially parse failures, GPA/count mismatches, and duplicates. A parse failure can mean a section is missing from your database.
+1. Compare **at least 10–20 random rows** in `public_grade_sections.csv` to the original PDF (course, section, semester, instructor text, each A–F count, GPA, report page).
+2. Inspect every issue in the import/audit CSVs, especially parse failures, GPA/count mismatches, and duplicates. A parse failure can mean a section is missing from your database.
 3. **Do not map abbreviated instructor names to real professors automatically.** The official report can use surname plus initial; different people may share that text.
 4. Keep source PDF and SHA-256 as evidence of exactly what you imported.
 5. A missing grade record is **unknown**, not an F, not zero GPA, and not proof the course was never taught.
 
-## 7. Run the API and website locally
+## 8. Run the API and website locally
 
 After installing dependencies and importing the report, run from the repository root:
 
@@ -99,19 +128,20 @@ Open these paths on the local server (default host `127.0.0.1`, port `8000`):
 
 Serve the frontend through FastAPI; opening `frontend/index.html` directly does not provide the API needed for search. Stop the development server with Ctrl+C. `--reload` is for local development.
 
-The API currently supports MATH and STAT for Spring 2026. An unsupported subject returns HTTP 400, a missing database returns 503, and a course without records returns 404. A welcome response alone does not verify database access. After import, search for a course present in `grade_sections.csv` and check its sections against that export.
+The API accepts all supported-format undergraduate subjects and the six supported terms. The default is Spring 2026; for example, `/courses/CHEM/119?term=2023-FALL&college=AT` selects a term and optional College. The website lets you choose the term and enter a subject. Only audited, unchanged rows without unresolved conflicts are returned. Invalid course/term input returns 400, an unavailable or unmigrated database returns 503, and no publishable matching rows returns 404. Missing or quarantined records are unknown, not zero grades. A welcome response alone does not verify database access.
 
-## Current data and UI limitations
+## Integrity guarantees and remaining limits
 
-- The importer assigns Spring 2026 / Arts & Sciences metadata without validating the PDF header. Confirm the year, semester, college, and report type yourself before importing.
-- Negative grade counts are not explicitly rejected, and instructor names split across extracted lines may be truncated. Inspect counts and instructor text against the original PDF even when a row says `checks_passed`.
-- Each import overwrites `quality_review.csv`; archive review results before reimporting. Existing conflicting database rows are retained and flagged rather than automatically replaced.
-- Overlapping browser searches are not cancelled. Wait for one search to finish before submitting another to avoid mixed results.
-- GPA summaries include rows needing review. Instructor summaries group by the published name text, which does not establish a shared professor identity.
+- Negative/non-integer counts, inconsistent totals/GPA, missing initials, duplicate identities, and uncertain extraction prevent publication. Raw evidence is retained for review.
+- Instructor names are buffered to section/page boundaries. Unknown trailing text and page-spanning partial rows go to review rather than being guessed or dropped. Recognized report summary rows are excluded from section names.
+- Each import gets its own UUID/timestamp CSV and database history; legacy review files are never overwritten. Repeated imports do not replace existing source rows. Current public CSV export is an atomic snapshot, not the history store.
+- New browser searches cancel the previous request and guard both delayed responses and errors, so only the newest search can update results.
+- Automated checks do not independently establish professor identity or prove that all suppressed/missing sections were published. Raw-name summaries group text, not verified people.
+- Unknown report layouts and unknown uncoded College mappings stop ingestion. Review and add supported fixtures rather than guessing metadata.
 
 ## Why we designed the database this way
 
-`schema.sql` creates three tables:
+`schema.sql` defines the original evidence and identity tables; the versioned migration adds source documents, import runs/records/issues/conflicts, validation history, and the `public_grade_sections` view:
 
 - `grade_sections`: the official *historical* grade counts, term, source, section, and instructor text **as published**.
 - `professors`: a future table for verified professor identities.
@@ -119,7 +149,7 @@ The API currently supports MATH and STAT for Spring 2026. An unsupported subject
 
 Every `grade_sections.professor_id` starts `NULL`. That is intentional and stops a `SMITH J` record from being treated as proof about a particular John/Jane Smith.
 
-**Important limitations:** The Registrar suppresses sections with fewer than five students. Its reports are term-specific point-in-time snapshots and may not reflect grade changes made after publication. A historical section record says nothing about whether a class will be available during registration. The script only reads the Arts & Sciences college report, so sections filed in another college report may be absent.
+**Important limitations:** The Registrar suppresses sections with fewer than five students. Its reports are term-specific point-in-time snapshots and may not reflect grade changes made after publication. A historical section record says nothing about whether a class will be available during registration. A single imported college report does not cover courses filed under other colleges. Import each verified report separately; College is part of section identity.
 
 ## Our next milestone
 
@@ -136,7 +166,9 @@ This is an independent student project, not an official TAMU product.
 ```text
 MaroonWay/
 ├── pipeline.py          # Main download, import, and summary CLI
-├── api.py               # FastAPI endpoints and frontend hosting
+├── api.py               # Read-only API over validated public rows
+├── storage.py           # Versioned migration, source preservation, row audits
+├── report_metadata.py   # Fail-closed report headers and supported terms
 ├── frontend/            # Course-search and section-comparison UI
 ├── analyze_gpa.py       # Section GPAs for the hard-coded course
 ├── course_summary.py    # Weighted GPA for the hard-coded term/course
@@ -144,7 +176,7 @@ MaroonWay/
 ├── schema.sql           # SQLite schema
 ├── requirements.txt     # Python dependencies
 ├── scripts/             # Database exploration and manual review tools
-├── tests/               # Parser tests
+├── tests/               # Python regressions and Node request-race tests
 ├── data/                # Generated database, CSV exports, and review inputs
 └── reports/             # Official source PDFs
 ```
@@ -174,8 +206,8 @@ term,section_code,instructor_as_reported,reviewed_instructor_name,review_status,
 - `term` and `section_code` identify an existing section.
 - `instructor_as_reported` must exactly match the stored source text after trimming whitespace.
 - `reviewed_instructor_name` must be nonempty. `review_status` must be `candidate` or `verified`; use `verified` only with independent supporting evidence recorded in `review_note`.
-- Keep one review per term and section. Preserve existing entries and quote CSV fields containing commas.
+- Keep one review per term, College, and section. Add an optional `college` column (for example `AT`) when needed. Without it, multiple matching colleges abort the review rather than selecting an arbitrary row. Preserve existing entries and quote fields containing commas.
 
 The script creates `data/maroonway_before_name_reviews.db` once and writes a separate `data/grade_sections_reviewed.csv`. It adds review fields without changing the original instructor text, quality status, or `professor_id`. The existing backup is not refreshed on later runs. The API currently displays the original instructor text, not the reviewed name.
 
-For console summaries, run `python analyze_gpa.py`, `python course_summary.py`, or `python instructor_summary.py` after import. These scripts currently select STAT 211 in code; edit their selection variables when exploring another course. `analyze_gpa.py` does not filter by semester, while the other two select Spring 2026.
+For console summaries, run `python analyze_gpa.py`, `python course_summary.py`, or `python instructor_summary.py` after import. These scripts currently select STAT 211 in code; edit their selection variables when exploring another course. All three read the validated public view. `analyze_gpa.py` lists matching sections across imported terms; the other two select Spring 2026. Set selection variables explicitly when comparing periods.
