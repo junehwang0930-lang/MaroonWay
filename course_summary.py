@@ -8,6 +8,13 @@ course = "211"
 
 connection = sqlite3.connect(DB_PATH)
 
+
+# Choose a semester and course
+term = "2026-SPRING"
+subject = "STAT"
+course = "211"
+
+# SQL query
 query = """
 SELECT
     subject,
@@ -21,11 +28,14 @@ SELECT
         3
     ) AS weighted_gpa
 FROM grade_sections
-WHERE subject = ? AND course_number = ?
+WHERE term = ?
+  AND subject = ?
+  AND course_number = ?
 GROUP BY subject, course_number;
 """
 
-cursor = connection.execute(query, (subject, course))
+cursor = connection.execute(query, (term, subject, course))
+
 row = cursor.fetchone()
 
 if row:
