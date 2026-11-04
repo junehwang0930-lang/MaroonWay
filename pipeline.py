@@ -17,6 +17,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from report_metadata import validate_metadata, SUPPORTED_TERMS
+
 ROOT = Path(__file__).resolve().parent
 REPORTS = ROOT / "reports"
 DATA = ROOT / "data"
@@ -186,14 +188,16 @@ def setup_db(connection: sqlite3.Connection):
     connection.executescript((ROOT / "schema.sql").read_text(encoding="utf-8"))
 
 
-def import_pdf(path: Path) -> None:
+def import_pdf(path: Path, *, year=2026, semester="SPRING", college="AT", college_name="Arts & Sciences") -> None:
     if not path.is_file():
         raise FileNotFoundError(f"Not found: {path}. Download the official report first.")
     data = path.read_bytes()
     if not data.startswith(b"%PDF-"):
         raise RuntimeError("Input is not a PDF. The Registrar may have returned an error page.")
     pdf_hash = hashlib.sha256(data).hexdigest()
-    rows, rejected = parse_pages(read_pdf_pages(path))
+    pages = read_pdf_pages(path)
+    metadata = validate_metadata(pages, year=year, semester=semester, college=college, college_name=college_name)
+    rows, rejected = parse_pages(pages)
     DATA.mkdir(exist_ok=True)
     if not rows:
         raise RuntimeError("No STAT/MATH rows found. Confirm this is Spring 2026 Arts & Sciences grade distribution (not GPA Distribution); inspect the PDF format.")
@@ -203,11 +207,11 @@ def import_pdf(path: Path) -> None:
         setup_db(con)
         for row in rows:
             status = "needs_review" if row.issues else "checks_passed"
-            arguments = (TERM, COLLEGE, row.subject, row.number, row.section,
+            arguments = (metadata.term, metadata.college, row.subject, row.number, row.section,
                          row.instructor_raw, row.a, row.b, row.c, row.d, row.f,
                          row.af_total, row.gpa, row.i_count, row.s_count, row.u_count,
                          row.q_count, row.x_count, row.enrollment_total,
-                         status, OFFICIAL_URL, pdf_hash, row.source_page, row.raw_row)
+                         status, metadata.source_url, pdf_hash, row.source_page, row.raw_row)
             try:
                 con.execute("""
                     INSERT INTO grade_sections
@@ -221,7 +225,7 @@ def import_pdf(path: Path) -> None:
                 previous = con.execute("""SELECT raw_row, source_sha256
                     FROM grade_sections WHERE term=? AND college=? AND subject=?
                     AND course_number=? AND section=?""",
-                    (TERM, COLLEGE, row.subject, row.number, row.section)).fetchone()
+                    (metadata.term, metadata.college, row.subject, row.number, row.section)).fetchone()
                 if previous != (row.raw_row, pdf_hash):
                     quality.append((row.source_page, f"{row.subject}-{row.number}-{row.section}",
                                     "Existing section differs; manual comparison required", row.raw_row))
@@ -299,16 +303,20 @@ def main():
     commands.add_parser("download", help="Try to fetch the public Arts & Sciences PDF")
     importer = commands.add_parser("import-pdf", help="Parse PDF and create SQLite + CSV")
     importer.add_argument("pdf", nargs="?", default=str(PDF_PATH), help="path to grade distribution PDF")
+    importer.add_argument("--year", type=int, default=2026)
+    importer.add_argument("--semester", choices=["SPRING", "FALL"], default="SPRING")
+    importer.add_argument("--college", default="AT")
+    importer.add_argument("--college-name", default="Arts & Sciences")
     commands.add_parser("show", help="Print a quick database summary")
     args = parser.parse_args()
     try:
         if args.action == "download":
             download()
         elif args.action == "import-pdf":
-            import_pdf(Path(args.pdf))
+            import_pdf(Path(args.pdf), year=args.year, semester=args.semester, college=args.college, college_name=args.college_name)
         elif args.action == "show":
             show()
-    except (RuntimeError, FileNotFoundError) as exc:
+    except (RuntimeError, FileNotFoundError, ValueError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         raise SystemExit(1)
 
