@@ -40,3 +40,10 @@ class RowIntegrityTests(unittest.TestCase):
         rows, review = parse_pages([GOOD + '\n' + GOOD.replace('SMITH B','JONES A')])
         self.assertTrue(review)
         self.assertTrue(rows[0].issues)
+
+    def test_official_totals_and_percentages_are_not_part_of_name(self):
+        text=GOOD+'\n58.33% 33.33% 8.33% 0.00% 0.00%\nCOURSE TOTAL: 7 4 1 0 0 12 3.500 0 0 0 0 0 12\nDEPARTMENT TOTAL: 7 4 1 0 0 12 3.500 0 0 0 0 0 12'
+        rows,review=parse_pages([text])
+        self.assertEqual(len(rows),1)
+        self.assertEqual(rows[0].instructor_raw,'SMITH B')
+        self.assertFalse(review)

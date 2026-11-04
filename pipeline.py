@@ -154,7 +154,9 @@ def parse_pages(pages: list[str]):
             line = normalize_line(original_line)
             if not line:
                 continue
-            if SECTION_START.match(line):
+            if re.match(r"^(?:COURSE|DEPARTMENT|COLLEGE) TOTAL\s*:", line):
+                finish()
+            elif SECTION_START.match(line):
                 finish()
                 active.append(original_line)
             elif active:
@@ -174,7 +176,7 @@ def parse_pages(pages: list[str]):
 
 def read_pdf_pages(path: Path) -> list[str]:
     try:
-        import fitz  # PyMuPDF
+        import pymupdf as fitz
     except ImportError as exc:
         raise RuntimeError("Install the PDF reader first: python -m pip install -r requirements.txt") from exc
     try:
@@ -189,64 +191,82 @@ def setup_db(connection: sqlite3.Connection):
 
 
 def import_pdf(path: Path, *, year=2026, semester="SPRING", college="AT", college_name="Arts & Sciences") -> None:
+    from storage import migrate, register_source, token, snapshot
+    import json
     if not path.is_file():
         raise FileNotFoundError(f"Not found: {path}. Download the official report first.")
     data = path.read_bytes()
     if not data.startswith(b"%PDF-"):
-        raise RuntimeError("Input is not a PDF. The Registrar may have returned an error page.")
-    pdf_hash = hashlib.sha256(data).hexdigest()
+        raise RuntimeError("Input is not a PDF")
     pages = read_pdf_pages(path)
     metadata = validate_metadata(pages, year=year, semester=semester, college=college, college_name=college_name)
     rows, rejected = parse_pages(pages)
+    # Validation precedes all DB writes, including migrations.
     DATA.mkdir(exist_ok=True)
+    migrate(DB_PATH)
+    run_id = token()
+    review_dir = DATA / "import_reviews"
+    review_dir.mkdir(exist_ok=True)
+    quality_path = review_dir / f"{run_id}.csv"
+    source_dir = DATA / "sources"
+    source_dir.mkdir(exist_ok=True)
+    pdf_hash = hashlib.sha256(data).hexdigest()
+    archived = source_dir / f"{pdf_hash}.pdf"
+    if archived.exists():
+        if archived.read_bytes() != data:
+            raise RuntimeError("Archived source checksum mismatch; import stopped")
+    else:
+        with archived.open("xb") as handle:
+            handle.write(data)
+    quality = list(rejected)
     if not rows:
-        raise RuntimeError("No STAT/MATH rows found. Confirm this is Spring 2026 Arts & Sciences grade distribution (not GPA Distribution); inspect the PDF format.")
-
-    quality = []
+        quality.append((0, "", "No supported undergraduate section rows found", ""))
     with sqlite3.connect(DB_PATH) as con:
-        setup_db(con)
+        con.row_factory = sqlite3.Row
+        con.execute("PRAGMA foreign_keys=ON")
+        register_source(con, data, metadata)
+        con.execute("insert into import_runs values (?,?,?,?,?,?,?)", (run_id, datetime.now(timezone.utc).isoformat(), pdf_hash, metadata.term, metadata.college, len(rows), str(quality_path)))
+        con.execute("insert into validation_runs values (?,?,?)", (run_id, datetime.now(timezone.utc).isoformat(), str(quality_path)))
         for row in rows:
             status = "needs_review" if row.issues else "checks_passed"
-            arguments = (metadata.term, metadata.college, row.subject, row.number, row.section,
-                         row.instructor_raw, row.a, row.b, row.c, row.d, row.f,
-                         row.af_total, row.gpa, row.i_count, row.s_count, row.u_count,
-                         row.q_count, row.x_count, row.enrollment_total,
-                         status, metadata.source_url, pdf_hash, row.source_page, row.raw_row)
-            try:
-                con.execute("""
-                    INSERT INTO grade_sections
-                    (term, college, subject, course_number, section,
-                     instructor_as_reported, a, b, c, d, f, af_total, gpa_reported,
-                     i_count, s_count, u_count, q_count, x_count, enrollment_total,
-                     quality_status, source_url, source_sha256, source_page, raw_row)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                """, arguments)
-            except sqlite3.IntegrityError:
-                previous = con.execute("""SELECT raw_row, source_sha256
-                    FROM grade_sections WHERE term=? AND college=? AND subject=?
-                    AND course_number=? AND section=?""",
-                    (metadata.term, metadata.college, row.subject, row.number, row.section)).fetchone()
-                if previous != (row.raw_row, pdf_hash):
-                    quality.append((row.source_page, f"{row.subject}-{row.number}-{row.section}",
-                                    "Existing section differs; manual comparison required", row.raw_row))
-            for issue in row.issues:
+            fields = ("term", "college", "subject", "course_number", "section", "instructor_as_reported", *COUNT_FIELDS, "gpa_reported", "quality_status", "source_url", "source_sha256", "source_page", "raw_row")
+            values = (metadata.term, metadata.college, row.subject, row.number, row.section, row.instructor_raw, *(getattr(row, k) for k in COUNT_FIELDS), row.gpa, status, metadata.source_url, pdf_hash, row.source_page, row.raw_row)
+            candidate = dict(zip(fields, values))
+            previous = con.execute("select * from grade_sections where term=? and college=? and subject=? and course_number=? and section=?", (metadata.term, metadata.college, row.subject, row.number, row.section)).fetchone()
+            issues = list(row.issues)
+            if previous:
+                # Formatting differences do not replace legacy raw evidence.
+                compare = [k for k in fields if k not in {"raw_row", "quality_status"}]
+                if any(previous[k] != candidate[k] for k in compare):
+                    issue = "Existing section differs; manual comparison required"
+                    issues.append(issue)
+                    con.execute("insert into import_conflicts (grade_section_id,run_id,detail) values (?,?,?)", (previous['id'], run_id, snapshot(candidate)))
+                grade_id = previous['id']
+                stored = previous
+            else:
+                cursor = con.execute(f"insert into grade_sections ({','.join(fields)}) values ({','.join('?' for _ in fields)})", values)
+                grade_id = cursor.lastrowid
+                stored = con.execute("select * from grade_sections where id=?", (grade_id,)).fetchone()
+            con.execute("insert into import_records (run_id,grade_section_id,snapshot_json) values (?,?,?)", (run_id, grade_id, snapshot(candidate)))
+            if con.execute("select 1 from import_conflicts where grade_section_id=?", (grade_id,)).fetchone():
+                issues.append("Unresolved conflicting import; original row retained")
+            from storage import row_issues
+            issues.extend(row_issues(stored))
+            issues = list(dict.fromkeys(issues))
+            con.execute("insert into grade_validations (run_id,grade_section_id,status,issues_json,snapshot_json) values (?,?,?,?,?)", (run_id,grade_id,"needs_review" if issues else "checks_passed",json.dumps(issues),snapshot(stored)))
+            for issue in issues:
                 quality.append((row.source_page, f"{row.subject}-{row.number}-{row.section}", issue, row.raw_row))
-        con.commit()
-    quality.extend(rejected)
-    quality_path = DATA / "quality_review.csv"
-    with quality_path.open("w", encoding="utf-8", newline="") as fh:
-        writer = csv.writer(fh)
-        writer.writerow(["source_page", "section_code", "issue", "raw_extracted_text"])
-        writer.writerows(quality)
+        con.executemany("insert into import_review_items (run_id,source_page,section_code,issue,raw_text) values (?,?,?,?,?)", [(run_id,*item) for item in quality])
+        with quality_path.open("x", encoding="utf-8", newline="") as handle:
+            writer = csv.writer(handle)
+            writer.writerow(["source_page", "section_code", "issue", "raw_extracted_text"])
+            writer.writerows(quality)
     export_csv()
-    print(f"Found {len(rows)} unique STAT/MATH section rows; {len(quality)} issues for review.")
-    if len(rows) < 10:
-        print("WARNING: Very few rows found. Inspect the source PDF and the extraction format.")
-    print(f"Database: {DB_PATH}")
-    print(f"Grade CSV: {DATA / 'grade_sections.csv'}")
-    print(f"Review CSV: {quality_path}")
-    print("IMPORTANT: Names are saved AS REPORTED; they are not linked to real professor identities.")
-    print("Check parsed rows against the PDF before publishing them.")
+    print(f"Import {run_id}: {len(rows)} undergraduate rows; {len(quality)} review items.")
+    print(f"Review CSV (preserved per import): {quality_path}")
+    print("Original instructor identities and source evidence are retained; only validated rows are public.")
+    if not rows:
+        raise RuntimeError("No undergraduate rows imported; review history was retained")
 
 
 def export_csv() -> None:
@@ -256,7 +276,7 @@ def export_csv() -> None:
                     instructor_as_reported, a, b, c, d, f, af_total, gpa_reported,
                     i_count, s_count, u_count, q_count, x_count, enrollment_total,
                     quality_status, source_page, source_url
-                    FROM grade_sections ORDER BY subject, course_number, section""").fetchall()
+                    FROM public_grade_sections ORDER BY term, college, subject, course_number, section""").fetchall()
         if not records:
             return
         with (DATA / "grade_sections.csv").open("w", newline="", encoding="utf-8") as fh:
@@ -307,6 +327,13 @@ def main():
     importer.add_argument("--semester", choices=["SPRING", "FALL"], default="SPRING")
     importer.add_argument("--college", default="AT")
     importer.add_argument("--college-name", default="Arts & Sciences")
+    audit = commands.add_parser("revalidate", help="Back up, migrate, and audit existing records without replacing source data")
+    audit.add_argument("--db", type=Path, default=DB_PATH)
+    audit.add_argument("--pdf", type=Path)
+    audit.add_argument("--year", type=int, default=2026)
+    audit.add_argument("--semester", choices=["SPRING", "FALL"], default="SPRING")
+    audit.add_argument("--college", default="AT")
+    audit.add_argument("--college-name", default="Arts & Sciences")
     commands.add_parser("show", help="Print a quick database summary")
     args = parser.parse_args()
     try:
@@ -314,6 +341,18 @@ def main():
             download()
         elif args.action == "import-pdf":
             import_pdf(Path(args.pdf), year=args.year, semester=args.semester, college=args.college, college_name=args.college_name)
+        elif args.action == "revalidate":
+            from storage import migrate, register_source, revalidate
+            import json
+            if not args.db.is_file():
+                raise FileNotFoundError(f"No database at {args.db}")
+            if args.pdf:
+                content = args.pdf.read_bytes()
+                metadata = validate_metadata(read_pdf_pages(args.pdf), year=args.year, semester=args.semester, college=args.college, college_name=args.college_name)
+                migrate(args.db)
+                with sqlite3.connect(args.db) as con:
+                    register_source(con, content, metadata)
+            print(json.dumps(revalidate(args.db), indent=2))
         elif args.action == "show":
             show()
     except (RuntimeError, FileNotFoundError, ValueError) as exc:

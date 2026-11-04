@@ -1,4 +1,4 @@
--- MaroonWay pilot: one semester of historical STAT and MATH grades.
+-- Original grade evidence is retained; integrity audits control publication.
 -- Do not confuse raw instructor initials with verified identities.
 PRAGMA foreign_keys = ON;
 
@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS grade_sections (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     term TEXT NOT NULL,
     college TEXT NOT NULL,
-    subject TEXT NOT NULL CHECK (subject IN ('STAT', 'MATH')),
+    subject TEXT NOT NULL,
     course_number TEXT NOT NULL,
     section TEXT NOT NULL,
     instructor_as_reported TEXT NOT NULL,
