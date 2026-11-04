@@ -179,3 +179,10 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(result.returncode,0,result.stderr)
         with sqlite3.connect(sandbox/'data/maroonway.db') as con:
             self.assertEqual(con.execute("select college from grade_sections where reviewed_instructor_name='Example Person'").fetchall(),[('EN',)])
+
+    def test_download_never_overwrites_existing_source_pdf(self):
+        from io import BytesIO
+        original=self.pdf.read_bytes()
+        with patch.object(p,'REPORTS',self.root),patch.object(p,'PDF_PATH',self.pdf),patch('urllib.request.urlopen',return_value=BytesIO(b'%PDF-changed-official-report')):
+            with self.assertRaises(RuntimeError):p.download()
+        self.assertEqual(self.pdf.read_bytes(),original)

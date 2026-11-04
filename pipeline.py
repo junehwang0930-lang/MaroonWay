@@ -1,4 +1,4 @@
-"""MaroonWay Phase 1: one-semester, two-subject grade-report pilot.
+"""MaroonWay: validated undergraduate grade-report imports and audits.
 
 Educational prototype. Uses only registrar reports; DOES NOT try to identify
 professors from abbreviated names or access Rate My Professors.
@@ -313,6 +313,8 @@ def show() -> None:
 
 def download() -> None:
     REPORTS.mkdir(exist_ok=True)
+    if PDF_PATH.exists():
+        raise RuntimeError(f"Source PDF already exists; refusing to overwrite {PDF_PATH}")
     print(f"Downloading official registrar report: {OFFICIAL_URL}")
     req = urllib.request.Request(OFFICIAL_URL, headers={"User-Agent": "MaroonWay-education-pilot/0.1"})
     try:
@@ -322,12 +324,16 @@ def download() -> None:
         raise RuntimeError("Automatic download failed. Open https://web-as.tamu.edu/gradereports/ in your browser, select 2026 / Spring / Arts & Sciences / Grade Distribution, and save the PDF to reports/spring_2026_arts_and_sciences.pdf.") from exc
     if not content.startswith(b"%PDF-"):
         raise RuntimeError("Website did not return a PDF. Use the manual download instructions in README.md.")
-    PDF_PATH.write_bytes(content)
+    try:
+        with PDF_PATH.open("xb") as handle:
+            handle.write(content)
+    except FileExistsError as exc:
+        raise RuntimeError(f"Source PDF already exists; refusing to overwrite {PDF_PATH}") from exc
     print(f"Saved {PDF_PATH} ({len(content):,} bytes)")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="MaroonWay Spring 2026 STAT/MATH grade reports")
+    parser = argparse.ArgumentParser(description="MaroonWay undergraduate grades: Fall 2023 through Spring 2026, excluding Summer")
     commands = parser.add_subparsers(dest="action", required=True)
     commands.add_parser("download", help="Try to fetch the public Arts & Sciences PDF")
     importer = commands.add_parser("import-pdf", help="Parse PDF and create SQLite + CSV")

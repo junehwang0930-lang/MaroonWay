@@ -6,7 +6,6 @@ Needs: data/maroonway.db and data/manual_instructor_reviews.csv
 from __future__ import annotations
 
 import csv
-import shutil
 import sqlite3
 from pathlib import Path
 
