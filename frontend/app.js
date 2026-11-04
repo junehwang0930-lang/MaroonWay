@@ -3,18 +3,23 @@ const form = document.querySelector("#search-form");
 const message = document.querySelector("#message");
 const results = document.querySelector("#results");
 
-const dialog = document.querySelector("#section-dialog");
-const closeButton = document.querySelector("#close-dialog");
+const compareButton = document.querySelector("#compare-button");
+const selectionCount = document.querySelector("#selection-count");
+const compareDialog = document.querySelector("#compare-dialog");
 
-// Close the popup when X is clicked
-closeButton.addEventListener("click", function() {
-    dialog.close();
-});
+const selected = new Map();
+let currentCourse = "";
 
-// Create a grade distribution bar
+// Calculate a percentage
+function percent(part, total) {
+    if (total === 0) return "N/A";
+    return `${(part / total * 100).toFixed(1)}%`;
+}
+
+// Create a colored grade bar
 function createGradeBar(section) {
-    const gradeBar = document.createElement("div");
-    gradeBar.className = "grade-bar";
+    const bar = document.createElement("div");
+    bar.className = "grade-bar";
 
     const grades = [
         ["A", section.a],
@@ -27,108 +32,140 @@ function createGradeBar(section) {
     const descriptions = [];
 
     for (const [grade, count] of grades) {
-        const percentage = section.af_total > 0
-            ? (count / section.af_total) * 100
-            : 0;
+        const rate = percent(count, section.af_total);
+        descriptions.push(`${grade}: ${count} (${rate})`);
 
-        descriptions.push(
-            `${grade}: ${count} students (${percentage.toFixed(1)}%)`
-        );
-
-        if (count === 0) {
-            continue;
-        }
+        if (count === 0) continue;
 
         const segment = document.createElement("div");
-
         segment.className =
             `grade-segment grade-${grade.toLowerCase()}`;
 
-        segment.style.width = `${percentage}%`;
+        segment.style.width =
+            `${count / section.af_total * 100}%`;
 
-        segment.title =
-            `${grade}: ${count} students (${percentage.toFixed(1)}%)`;
-
-        gradeBar.appendChild(segment);
+        segment.title = `${grade}: ${count} (${rate})`;
+        bar.appendChild(segment);
     }
 
-    gradeBar.setAttribute("role", "img");
-    gradeBar.setAttribute(
-        "aria-label",
-        descriptions.join(", ")
+    bar.setAttribute("role", "img");
+    bar.setAttribute("aria-label", descriptions.join(", "));
+
+    return bar;
+}
+
+// Enable Compare only when exactly two sections are selected
+function updateSelection() {
+    selectionCount.textContent =
+        `${selected.size} of 2 sections selected`;
+
+    compareButton.disabled = selected.size !== 2;
+
+    document.querySelectorAll(".compare-checkbox")
+        .forEach(function(checkbox) {
+            checkbox.disabled =
+                selected.size === 2 && !checkbox.checked;
+        });
+}
+
+// Add one comparison row
+function addCompareRow(label, left, right) {
+    const row = document.createElement("tr");
+
+    for (const value of [label, left, right]) {
+        const cell = document.createElement("td");
+        cell.textContent = String(value);
+        row.appendChild(cell);
+    }
+
+    document.querySelector("#compare-results").appendChild(row);
+}
+
+// Open the comparison popup
+compareButton.addEventListener("click", function() {
+    if (selected.size !== 2) return;
+
+    const [left, right] = [...selected.values()];
+
+    document.querySelector("#compare-course").textContent =
+        `${currentCourse} · Spring 2026`;
+
+    document.querySelector("#compare-left-title").textContent =
+        `Section ${left.section}`;
+
+    document.querySelector("#compare-right-title").textContent =
+        `Section ${right.section}`;
+
+    const body = document.querySelector("#compare-results");
+    body.replaceChildren();
+
+    addCompareRow(
+        "Instructor",
+        left.instructor_as_reported,
+        right.instructor_as_reported
     );
 
-    return gradeBar;
-}
+    addCompareRow(
+        "Reported GPA",
+        left.gpa_reported ?? "N/A",
+        right.gpa_reported ?? "N/A"
+    );
 
-// Open the selected section's detail popup
-function showSectionDetails(course, section) {
-    document.querySelector("#detail-title").textContent =
-        `${course} - Section ${section.section}`;
+    addCompareRow("A-F Students", left.af_total, right.af_total);
 
-    document.querySelector("#detail-instructor").textContent =
-        `Instructor: ${section.instructor_as_reported}`;
+    addCompareRow(
+        "A Rate",
+        percent(left.a, left.af_total),
+        percent(right.a, right.af_total)
+    );
 
-    document.querySelector("#detail-gpa").textContent =
-        section.gpa_reported ?? "N/A";
+    addCompareRow(
+        "D + F Rate",
+        percent(left.d + left.f, left.af_total),
+        percent(right.d + right.f, right.af_total)
+    );
 
-    document.querySelector("#detail-students").textContent =
-        section.af_total;
+    addCompareRow("Q-Drops", left.q_count, right.q_count);
 
-    // Display a larger grade bar
-    const gradeBar = createGradeBar(section);
-    gradeBar.classList.add("detail-grade-bar");
+    addCompareRow(
+        "Q Share",
+        percent(left.q_count, left.enrollment_total),
+        percent(right.q_count, right.enrollment_total)
+    );
 
-    document.querySelector("#detail-bar-container")
-        .replaceChildren(gradeBar);
+    addCompareRow(
+        "Reported Total",
+        left.enrollment_total,
+        right.enrollment_total
+    );
 
-    // Display grade counts and percentages
-    const gradeList = document.querySelector("#detail-grades");
-    gradeList.replaceChildren();
+    addCompareRow(
+        "Data Status",
+        left.quality_status,
+        right.quality_status
+    );
 
-    const grades = [
-        ["A", section.a],
-        ["B", section.b],
-        ["C", section.c],
-        ["D", section.d],
-        ["F", section.f]
-    ];
+    // Add grade distribution bars
+    const row = document.createElement("tr");
+    const label = document.createElement("td");
+    label.textContent = "Grade Distribution";
+    row.appendChild(label);
 
-    for (const [grade, count] of grades) {
-        const percentage = section.af_total > 0
-            ? (count / section.af_total) * 100
-            : 0;
-
-        const item = document.createElement("div");
-        item.className = "grade-detail-item";
-
-        const dot = document.createElement("span");
-        dot.className =
-            `grade-dot grade-${grade.toLowerCase()}`;
-
-        const label = document.createElement("span");
-        label.textContent =
-            `${grade}: ${count} (${percentage.toFixed(1)}%)`;
-
-        item.appendChild(dot);
-        item.appendChild(label);
-        gradeList.appendChild(item);
+    for (const section of [left, right]) {
+        const cell = document.createElement("td");
+        cell.appendChild(createGradeBar(section));
+        row.appendChild(cell);
     }
 
-    // Explain the data quality status
-    const status = document.querySelector("#detail-status");
+    body.appendChild(row);
+    compareDialog.showModal();
+});
 
-    if (section.quality_status === "needs_review") {
-        status.textContent =
-            "Needs Review: An automatic check flagged this record.";
-    } else {
-        status.textContent =
-            "Checks Passed: No automatic validation issue was flagged.";
-    }
-
-    // Show the popup
-    dialog.showModal();
-}
+// Close the popup
+document.querySelector("#close-compare")
+    .addEventListener("click", function() {
+        compareDialog.close();
+    });
 
 // Search for courses
 form.addEventListener("submit", async function(event) {
@@ -139,6 +176,9 @@ form.addEventListener("submit", async function(event) {
 
     message.textContent = "Loading...";
     results.replaceChildren();
+
+    selected.clear();
+    updateSelection();
 
     try {
         const response = await fetch(
@@ -151,29 +191,41 @@ form.addEventListener("submit", async function(event) {
             throw new Error(data.detail || "Search failed");
         }
 
+        currentCourse = data.course;
+
         message.textContent =
             `${data.course} - ${data.section_count} sections`;
 
         for (const section of data.sections) {
             const row = document.createElement("tr");
 
-            // Create a clickable Section number
-            const sectionCell = document.createElement("td");
-            const sectionButton = document.createElement("button");
+            // First column: comparison checkbox
+            const checkCell = document.createElement("td");
+            const checkbox = document.createElement("input");
 
-            sectionButton.type = "button";
-            sectionButton.className = "section-link";
-            sectionButton.textContent = section.section;
+            checkbox.type = "checkbox";
+            checkbox.className = "compare-checkbox";
+            checkbox.setAttribute(
+                "aria-label",
+                `Compare Section ${section.section}`
+            );
 
-            sectionButton.addEventListener("click", function() {
-                showSectionDetails(data.course, section);
+            checkbox.addEventListener("change", function() {
+                if (checkbox.checked) {
+                    selected.set(section.section, section);
+                } else {
+                    selected.delete(section.section);
+                }
+
+                updateSelection();
             });
 
-            sectionCell.appendChild(sectionButton);
-            row.appendChild(sectionCell);
+            checkCell.appendChild(checkbox);
+            row.appendChild(checkCell);
 
-            // Add the other table columns
+            // Regular table columns
             const values = [
+                section.section,
                 section.instructor_as_reported,
                 section.gpa_reported ?? "N/A",
                 section.af_total,
@@ -186,12 +238,11 @@ form.addEventListener("submit", async function(event) {
                 row.appendChild(cell);
             }
 
-            // Add the grade distribution bar
+            // Grade Distribution column
             const gradeCell = document.createElement("td");
             gradeCell.appendChild(createGradeBar(section));
             row.appendChild(gradeCell);
 
-            // Add the completed row to the table
             results.appendChild(row);
         }
 
