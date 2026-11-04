@@ -9,6 +9,9 @@ const compareDialog = document.querySelector("#compare-dialog");
 
 const selected = new Map();
 let currentCourse = "";
+let currentTerm = "";
+let requestGeneration = 0;
+let activeController = null;
 
 // Calculate a percentage
 function percent(part, total) {
@@ -88,13 +91,13 @@ compareButton.addEventListener("click", function() {
     const [left, right] = [...selected.values()];
 
     document.querySelector("#compare-course").textContent =
-        `${currentCourse} · Spring 2026`;
+        `${currentCourse} · ${currentTerm}`;
 
     document.querySelector("#compare-left-title").textContent =
-        `Section ${left.section}`;
+        `${left.college} · Section ${left.section}`;
 
     document.querySelector("#compare-right-title").textContent =
-        `Section ${right.section}`;
+        `${right.college} · Section ${right.section}`;
 
     const body = document.querySelector("#compare-results");
     body.replaceChildren();
@@ -171,7 +174,15 @@ document.querySelector("#close-compare")
 form.addEventListener("submit", async function(event) {
     event.preventDefault();
 
-    const subject = document.querySelector("#subject").value;
+    const generation = ++requestGeneration;
+    activeController?.abort();
+    const controller = new AbortController();
+    activeController = controller;
+    compareDialog.close();
+    currentCourse = "";
+    currentTerm = "";
+    const term = document.querySelector("#term").value;
+    const subject = document.querySelector("#subject").value.trim().toUpperCase();
     const number = document.querySelector("#number").value.trim();
 
     message.textContent = "Loading...";
@@ -182,16 +193,19 @@ form.addEventListener("submit", async function(event) {
 
     try {
         const response = await fetch(
-            `/courses/${encodeURIComponent(subject)}/${encodeURIComponent(number)}`
+            `/courses/${encodeURIComponent(subject)}/${encodeURIComponent(number)}?term=${encodeURIComponent(term)}`,
+            { signal: controller.signal }
         );
 
         const data = await response.json();
+        if (generation !== requestGeneration) return;
 
         if (!response.ok) {
             throw new Error(data.detail || "Search failed");
         }
 
         currentCourse = data.course;
+        currentTerm = data.term;
 
         message.textContent =
             `${data.course} - ${data.section_count} sections`;
@@ -212,9 +226,9 @@ form.addEventListener("submit", async function(event) {
 
             checkbox.addEventListener("change", function() {
                 if (checkbox.checked) {
-                    selected.set(section.section, section);
+                    selected.set(`${section.college}:${section.section}`, section);
                 } else {
-                    selected.delete(section.section);
+                    selected.delete(`${section.college}:${section.section}`);
                 }
 
                 updateSelection();
@@ -225,7 +239,7 @@ form.addEventListener("submit", async function(event) {
 
             // Regular table columns
             const values = [
-                section.section,
+                `${section.college} · ${section.section}`,
                 section.instructor_as_reported,
                 section.gpa_reported ?? "N/A",
                 section.af_total,
@@ -247,6 +261,7 @@ form.addEventListener("submit", async function(event) {
         }
 
     } catch (error) {
+        if (generation !== requestGeneration || error.name === "AbortError") return;
         message.textContent = error.message;
     }
 });

@@ -18,9 +18,16 @@
         <form id="search-form">
 
             <label for="subject">Subject</label>
-            <select id="subject">
-                <option value="STAT">STAT</option>
-                <option value="MATH">MATH</option>
+            <input id="subject" type="text" value="STAT" pattern="[A-Za-z]{2,8}" maxlength="8" required>
+
+            <label for="term">Semester</label>
+            <select id="term">
+                <option value="2026-SPRING">Spring 2026</option>
+                <option value="2025-FALL">Fall 2025</option>
+                <option value="2025-SPRING">Spring 2025</option>
+                <option value="2024-FALL">Fall 2024</option>
+                <option value="2024-SPRING">Spring 2024</option>
+                <option value="2023-FALL">Fall 2023</option>
             </select>
 
             <label for="number">Course Number</label>
@@ -39,7 +46,7 @@
 
         <!-- Search Result Message -->
         <p id="message" role="status">
-            Search for a course!
+            Search imported undergraduate courses. Missing data is unknown, not a zero grade.
         </p>
 
         <!-- Compare Sections Toolbar -->
