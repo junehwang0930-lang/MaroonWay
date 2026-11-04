@@ -10,7 +10,7 @@ subject = "STAT"
 course = "211"
 
 # Connect to SQLite
-connection = sqlite3.connect(DB_PATH)
+connection = sqlite3.connect(DB_PATH.resolve().as_uri() + "?mode=ro", uri=True)
 
 # Search for historical sections
 query = """
@@ -19,7 +19,7 @@ SELECT
     instructor_as_reported,
     gpa_reported,
     af_total
-FROM grade_sections
+FROM public_grade_sections
 WHERE subject = ? AND course_number = ?
 ORDER BY gpa_reported DESC;
 """

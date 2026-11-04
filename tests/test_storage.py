@@ -119,3 +119,63 @@ class StorageTests(unittest.TestCase):
             self.assertEqual(con.execute('select count(*) from public_grade_sections').fetchone()[0],1)
             con.execute("update grade_sections set a=8")
             self.assertEqual(con.execute('select count(*) from public_grade_sections').fetchone()[0],0)
+
+    def test_public_export_preserves_legacy_csv_and_clears_quarantined_rows(self):
+        legacy=self.root/'grade_sections.csv';legacy.write_text('original exported evidence\n')
+        self.import_rows()
+        self.assertEqual(legacy.read_text(),'original exported evidence\n')
+        with sqlite3.connect(self.db) as con:con.execute('update grade_sections set a=-1')
+        p.export_csv()
+        with (self.root/'public_grade_sections.csv').open() as handle:
+            self.assertEqual(len(list(csv.DictReader(handle))),0)
+
+    def test_revalidation_handles_malformed_legacy_values_without_crashing(self):
+        import storage
+        self.import_rows()
+        with sqlite3.connect(self.db) as con:
+            con.execute('update grade_sections set source_page=?,gpa_reported=?',('unknown',float('inf')))
+        report=storage.revalidate(self.db)
+        self.assertEqual(report['needs_review'],1)
+
+    def test_nonfinite_gpa_is_recorded_for_review_without_losing_valid_rows(self):
+        self.import_rows(GOOD+'\n'+GOOD.replace('-200 ','-201 ').replace('3.500','NaN'))
+        with sqlite3.connect(self.db) as con:
+            self.assertEqual(con.execute('select count(*) from grade_sections').fetchone()[0],1)
+            self.assertEqual(con.execute('select count(*) from import_review_items').fetchone()[0],1)
+
+    def test_migration_preserves_dependent_views_indexes_and_triggers(self):
+        import storage
+        schema=(p.ROOT/'schema.sql').read_text().replace('subject TEXT NOT NULL,',"subject TEXT NOT NULL CHECK (subject IN ('STAT', 'MATH')),")
+        with sqlite3.connect(self.db) as con:
+            con.executescript(schema)
+            con.executescript('CREATE VIEW custom_sections AS SELECT id,subject FROM grade_sections; CREATE INDEX custom_name_index ON grade_sections(instructor_as_reported); CREATE TABLE touched (id INTEGER); CREATE TRIGGER custom_touch AFTER INSERT ON grade_sections BEGIN INSERT INTO touched VALUES (NEW.id); END;')
+        storage.migrate(self.db)
+        with sqlite3.connect(self.db) as con:
+            self.assertEqual(con.execute('select * from custom_sections').fetchall(),[])
+            names={r[0] for r in con.execute('select name from sqlite_master')}
+            self.assertTrue({'custom_name_index','custom_touch'}<=names)
+
+    def test_manual_review_rejects_ambiguous_college_and_accepts_explicit_college(self):
+        import shutil, subprocess, sys
+        self.import_rows()
+        # Same section identity legitimately filed under a second College.
+        with sqlite3.connect(self.db) as con:
+            cols=[r[1] for r in con.execute('pragma table_info(grade_sections)') if r[1]!='id']
+            values=list(con.execute('select '+','.join(cols)+' from grade_sections').fetchone())
+            values[cols.index('college')]='EN'
+            con.execute('insert into grade_sections ('+','.join(cols)+') values ('+','.join('?' for _ in cols)+')',values)
+        sandbox=self.root/'manual'; (sandbox/'scripts').mkdir(parents=True)
+        (sandbox/'data').mkdir()
+        shutil.copy2(p.ROOT/'scripts/apply_name_reviews.py',sandbox/'scripts/apply_name_reviews.py')
+        shutil.copy2(self.db,sandbox/'data/maroonway.db')
+        csv_path=sandbox/'data/manual_instructor_reviews.csv'
+        csv_path.write_text('term,section_code,instructor_as_reported,reviewed_instructor_name,review_status,review_note\n2026-SPRING,STAT-211-200,SMITH B,Example Person,candidate,fixture\n')
+        command=[sys.executable,str(sandbox/'scripts/apply_name_reviews.py')]
+        result=subprocess.run(command,capture_output=True,text=True)
+        self.assertNotEqual(result.returncode,0)
+        self.assertIn('College',result.stderr)
+        csv_path.write_text('college,'+csv_path.read_text().replace('\n2026-SPRING','\nEN,2026-SPRING'))
+        result=subprocess.run(command,capture_output=True,text=True)
+        self.assertEqual(result.returncode,0,result.stderr)
+        with sqlite3.connect(sandbox/'data/maroonway.db') as con:
+            self.assertEqual(con.execute("select college from grade_sections where reviewed_instructor_name='Example Person'").fetchall(),[('EN',)])

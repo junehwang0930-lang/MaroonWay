@@ -6,7 +6,7 @@ DB_PATH = Path(__file__).resolve().parent / "data" / "maroonway.db"
 subject = "STAT"
 course = "211"
 
-connection = sqlite3.connect(DB_PATH)
+connection = sqlite3.connect(DB_PATH.resolve().as_uri() + "?mode=ro", uri=True)
 
 
 # Choose a semester and course
@@ -27,7 +27,7 @@ SELECT
         / NULLIF(SUM(af_total), 0),
         3
     ) AS weighted_gpa
-FROM grade_sections
+FROM public_grade_sections
 WHERE term = ?
   AND subject = ?
   AND course_number = ?

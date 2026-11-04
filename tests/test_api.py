@@ -53,3 +53,20 @@ class PublicationTests(unittest.TestCase):
         with sqlite3.connect(self.db) as con:con.execute("update grade_sections set a=99")
         with self.assertRaises(self.api.HTTPException) as caught:self.api.get_course('STAT','211')
         self.assertEqual(caught.exception.status_code,404)
+
+    def test_console_summaries_use_only_public_records(self):
+        import shutil, subprocess, sys
+        for script in ['analyze_gpa.py','course_summary.py','instructor_summary.py']:
+            with self.subTest(script=script):
+                shutil.copy2(p.ROOT/script,self.root/script)
+                (self.root/'data').mkdir(exist_ok=True)
+                shutil.copy2(self.db,self.root/'data/maroonway.db')
+                result=subprocess.run([sys.executable,str(self.root/script)],capture_output=True,text=True)
+                self.assertEqual(result.returncode,0,result.stderr)
+                if script=='course_summary.py':
+                    self.assertIn('Sections: 1',result.stdout)
+                    self.assertIn('Weighted GPA: 3.5',result.stdout)
+                elif script=='analyze_gpa.py':
+                    self.assertNotIn("'201'",result.stdout)
+                else:
+                    self.assertIn("'SMITH B', 1, 12, 3.5",result.stdout)

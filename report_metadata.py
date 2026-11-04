@@ -8,6 +8,11 @@ import re
 from urllib.parse import urlencode
 
 SECTION = re.compile(r'^[A-Z]{2,8}-\d{3,4}[A-Z]?-[A-Z0-9]+\b')
+# Verified uncoded College header in the supplied official report.
+# Add reviewed code/name mappings (with PDF header fixtures) before accepting
+# another college whose PDF omits its code. Coded headers verify both directly.
+UNCODED_COLLEGES = {'AT': 'Arts & Sciences'}
+
 SUPPORTED_TERMS = frozenset({'2023-FALL', '2024-SPRING', '2024-FALL', '2025-SPRING', '2025-FALL', '2026-SPRING'})
 
 @dataclass(frozen=True)
@@ -45,7 +50,26 @@ def validate_metadata(pages, *, year, semester, college, college_name):
         raise ValueError('Only Spring/Fall from Fall 2023 through Spring 2026 are supported; Summer is excluded')
     if not re.fullmatch(r'[A-Z0-9]{2,8}', college) or not canonical(college_name):
         raise ValueError('An explicit college code and full college name are required')
-    lines = list(header_lines(pages))
+    verified = 0
+    for page_number, page in enumerate(pages, 1):
+        lines = list(header_lines([page]))
+        if not page.strip():
+            continue
+        starts = [i for i, line in enumerate(lines) if re.search(r'\b(?:GRADE|GPA)\s+DISTRIBUTION\b',line,re.I)]
+        if not starts:
+            raise ValueError(f'Cannot verify report header on page {page_number}')
+        # A valid page must not mask a second unverifiable report title.
+        for index, start in enumerate(starts):
+            end = starts[index+1] if index+1 < len(starts) else len(lines)
+            _verify_header(lines[start:end], expected)
+            verified += 1
+    if not verified:
+        raise ValueError('No verifiable report headers')
+    return expected
+
+
+def _verify_header(lines, expected):
+    college, college_name = expected.college, expected.college_name
     text = '\n'.join(lines).upper()
     if re.search(r'\bGPA\s+DISTRIBUTION\b', text) or not re.search(r'\bGRADE\s+DISTRIBUTION\b', text):
         raise ValueError('Cannot verify Grade Distribution report type (GPA Distribution is not accepted)')
@@ -65,6 +89,10 @@ def validate_metadata(pages, *, year, semester, college, college_name):
         if coded:
             if coded[1] != college or canonical(coded[2]) != canonical(college_name):
                 raise ValueError('Report College code/name mismatches requested College')
-        elif canonical(value) != canonical(college_name):
-            raise ValueError('Report College name mismatches requested College')
-    return expected
+        else:
+            registered = UNCODED_COLLEGES.get(college)
+            if not registered or canonical(registered) != canonical(college_name) or canonical(value) != canonical(registered):
+                raise ValueError('Uncoded College header requires a reviewed code/name mapping; unknown or mismatched College')
+    years = set(re.findall(r'\b20\d{2}\b', text))
+    if years != {str(expected.year)}:
+        raise ValueError('Unknown or conflicting year in report header')

@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 import csv
 import hashlib
 import json
+import math
 from pathlib import Path
 import re
 import sqlite3
@@ -55,6 +56,9 @@ def migrate(path):
                 con.execute(replacement)
                 names=','.join(map(quote,columns))
                 con.execute(f'insert into _grade_sections_v2 ({names}) select {names} from grade_sections')
+                # Keep dependent view definitions pointing at the stable final
+                # table name during the transactional replacement.
+                con.execute('PRAGMA legacy_alter_table=ON')
                 con.execute('drop table grade_sections')
                 con.execute('alter table _grade_sections_v2 rename to grade_sections')
                 if sequence:
@@ -104,7 +108,11 @@ def register_source(con, content, metadata):
 
 
 def snapshot(row):
-    return json.dumps({k:row[k] for k in SOURCE_FIELDS},sort_keys=True,allow_nan=False)
+    values = {k:row[k] for k in SOURCE_FIELDS}
+    for key, value in values.items():
+        if isinstance(value, float) and not math.isfinite(value):
+            values[key] = repr(value)
+    return json.dumps(values,sort_keys=True,allow_nan=False)
 
 
 def row_issues(row):
@@ -116,7 +124,7 @@ def row_issues(row):
         value=row[name]
         if not isinstance(value,int) or value < 0:
             issues.append(f'Invalid nonnegative integer count: {name}')
-    decoded=decode_row(row['raw_row'],row['source_page'])
+    decoded=decode_row(row['raw_row'],row['source_page']) if isinstance(row['raw_row'], str) else None
     if decoded is None:
         issues.append('Original row cannot be parsed with current parser')
     else:
@@ -128,7 +136,7 @@ def row_issues(row):
         issues.append('Unsupported term')
     if not re.fullmatch(r'[A-Z]{2,8}',str(row['subject'])) or not re.fullmatch(r'[1-4]\d{2}[A-Z]?',str(row['course_number'])):
         issues.append('Not a supported undergraduate course code')
-    if row['source_page'] is None or row['source_page'] < 1:
+    if not isinstance(row['source_page'],int) or row['source_page'] < 1:
         issues.append('Invalid source page')
     return issues
 
@@ -193,5 +201,7 @@ def revalidate(path):
             writer=csv.writer(handle)
             writer.writerow(['id','term','college','subject','course_number','section','status','issues','source_sha256','source_page'])
             writer.writerows(results)
+    from pipeline import export_csv
+    export_csv(path)
     passed=sum(r[6]=='checks_passed' for r in results)
     return dict(run_id=run_id,total=len(results),checks_passed=passed,needs_review=len(results)-passed,report=str(report))

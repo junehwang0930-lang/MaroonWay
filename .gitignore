@@ -10,3 +10,9 @@ data/*.csv
 reports/*.pdf
 .DS_Store
 .vscode/
+
+# Immutable import/audit evidence stays local, like the database.
+data/import_reviews/
+data/validation_runs/
+data/sources/
+data/*.csv.tmp

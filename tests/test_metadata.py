@@ -39,3 +39,19 @@ class MetadataTests(unittest.TestCase):
     def test_body_cannot_supply_missing_metadata(self):
         with self.assertRaises(ValueError):
             self.validate(GOOD+'\n'+HEADER)
+
+    def test_uncoded_college_name_cannot_authorize_arbitrary_code(self):
+        text=HEADER.replace('AT - Arts & Sciences','Arts & Sciences')
+        with self.assertRaises(ValueError):
+            self.validate(text,college='EN')
+        self.assertEqual(self.validate(text).college,'AT')
+
+    def test_valid_page_cannot_mask_unverifiable_other_page(self):
+        self.assertTrue(callable(getattr(p,'validate_metadata',None)))
+        for bad in ['WINTER 2025','2025','WINTER 2026','']:
+            with self.subTest(bad=bad),self.assertRaises(ValueError):
+                p.validate_metadata([HEADER+GOOD,HEADER.replace('Spring 2026',bad)+GOOD],year=2026,semester='SPRING',college='AT',college_name='Arts & Sciences')
+
+    def test_headerless_section_page_is_rejected(self):
+        with self.assertRaises(ValueError):
+            p.validate_metadata([HEADER+GOOD,GOOD],year=2026,semester='SPRING',college='AT',college_name='Arts & Sciences')

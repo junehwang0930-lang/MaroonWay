@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import csv
 import hashlib
+import math
 import re
 import sqlite3
 import sys
@@ -85,6 +86,8 @@ def decode_row(text: str, page: int) -> Parsed | None:
             gpa = None
         else:
             gpa = float(raw_gpa)
+            if not math.isfinite(gpa):
+                return None
         last_six = [int(x) for x in parts[8:14]]
     except ValueError:
         return None
@@ -269,20 +272,26 @@ def import_pdf(path: Path, *, year=2026, semester="SPRING", college="AT", colleg
         raise RuntimeError("No undergraduate rows imported; review history was retained")
 
 
-def export_csv() -> None:
-    with sqlite3.connect(DB_PATH) as con:
-        con.row_factory = sqlite3.Row
-        records = con.execute("""SELECT term, subject, course_number, section,
-                    instructor_as_reported, a, b, c, d, f, af_total, gpa_reported,
-                    i_count, s_count, u_count, q_count, x_count, enrollment_total,
-                    quality_status, source_page, source_url
-                    FROM public_grade_sections ORDER BY term, college, subject, course_number, section""").fetchall()
-        if not records:
-            return
-        with (DATA / "grade_sections.csv").open("w", newline="", encoding="utf-8") as fh:
-            writer = csv.writer(fh)
-            writer.writerow(records[0].keys())
-            writer.writerows([tuple(r) for r in records])
+def export_csv(db_path=None) -> None:
+    """Refresh a public snapshot atomically; never replace the legacy evidence CSV."""
+    import os
+    import tempfile
+    path = Path(db_path) if db_path is not None else DB_PATH
+    fields = ("term", "college", "subject", "course_number", "section", "instructor_as_reported", *COUNT_FIELDS, "gpa_reported", "source_page", "source_url", "source_sha256")
+    with sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True) as con:
+        records = con.execute(f"SELECT {','.join(fields)} FROM public_grade_sections ORDER BY term,college,subject,course_number,section").fetchall()
+    target = path.parent / "public_grade_sections.csv"
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", dir=path.parent, suffix=".csv.tmp", delete=False, newline="", encoding="utf-8") as handle:
+            temporary = Path(handle.name)
+            writer = csv.writer(handle)
+            writer.writerow(fields)
+            writer.writerows(records)
+        os.replace(temporary, target)
+    finally:
+        if temporary is not None and temporary.exists():
+            temporary.unlink()
 
 
 def show() -> None:
