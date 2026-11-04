@@ -9,3 +9,4 @@ data/*.csv
 
 reports/*.pdf
 .DS_Store
+.vscode/

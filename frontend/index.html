@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MaroonWay</title>
+    <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+    <main class="container">
+        <h1>MaroonWay</h1>
+        <p>Explore Texas A&M historical grades</p>
+
+        <form id="search-form">
+            <label for="subject">Subject</label>
+            <select id="subject">
+                <option value="STAT">STAT</option>
+                <option value="MATH">MATH</option>
+            </select>
+
+            <label for="number">Course Number</label>
+            <input id="number" value="211" required>
+
+            <button type="submit">Search Courses</button>
+        </form>
+
+        <p id="message" role="status">Search for a course!</p>
+
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Section</th>
+                        <th>Instructor</th>
+                        <th>GPA</th>
+                        <th>A-F Students</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="results"></tbody>
+            </table>
+        </div>
+
+        <p class="note">
+            Historical grades only. Instructor identities
+            are not independently verified.
+        </p>
+    </main>
+
+    <script src="./app.js"></script>
+</body>
+</html>

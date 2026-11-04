@@ -1,0 +1,3 @@
+Download the official Spring 2026 Arts & Sciences GRADE DISTRIBUTION PDF.
+Save it in this folder as: spring_2026_arts_and_sciences.pdf
+You can also try: python pipeline.py download

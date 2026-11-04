@@ -1,12 +1,21 @@
 import sqlite3
+from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from fastapi import FastAPI, HTTPException
+
 
 # Database location
 DB_PATH = Path(__file__).resolve().parent / "data" / "maroonway.db"
 
 # Create our API
 app = FastAPI(title="MaroonWay API")
+FRONTEND_DIR = Path(__file__).resolve().parent / "frontend"
+
+app.mount(
+    "/app",
+    StaticFiles(directory=FRONTEND_DIR, html=True),
+    name="frontend"
+)
 
 
 @app.get("/")
