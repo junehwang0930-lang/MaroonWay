@@ -71,6 +71,10 @@ th, td {
 .grade-segment {
     height: 100%;
 }
+/* Add black lines between grade segments */
+.grade-segment + .grade-segment {
+    box-shadow: inset 2px 0 0 #000000;
+}
 
 .grade-a {
     background-color: #26856a;
