@@ -1,0 +1,11 @@
+__pycache__/
+.venv/
+*.py[cod]
+
+data/*.db
+data/*.db-*
+data/*.csv
+!data/manual_instructor_reviews.csv
+
+reports/*.pdf
+.DS_Store
