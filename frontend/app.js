@@ -3,10 +3,137 @@ const form = document.querySelector("#search-form");
 const message = document.querySelector("#message");
 const results = document.querySelector("#results");
 
+const dialog = document.querySelector("#section-dialog");
+const closeButton = document.querySelector("#close-dialog");
+
+// Close the popup when X is clicked
+closeButton.addEventListener("click", function() {
+    dialog.close();
+});
+
+// Create a grade distribution bar
+function createGradeBar(section) {
+    const gradeBar = document.createElement("div");
+    gradeBar.className = "grade-bar";
+
+    const grades = [
+        ["A", section.a],
+        ["B", section.b],
+        ["C", section.c],
+        ["D", section.d],
+        ["F", section.f]
+    ];
+
+    const descriptions = [];
+
+    for (const [grade, count] of grades) {
+        const percentage = section.af_total > 0
+            ? (count / section.af_total) * 100
+            : 0;
+
+        descriptions.push(
+            `${grade}: ${count} students (${percentage.toFixed(1)}%)`
+        );
+
+        if (count === 0) {
+            continue;
+        }
+
+        const segment = document.createElement("div");
+
+        segment.className =
+            `grade-segment grade-${grade.toLowerCase()}`;
+
+        segment.style.width = `${percentage}%`;
+
+        segment.title =
+            `${grade}: ${count} students (${percentage.toFixed(1)}%)`;
+
+        gradeBar.appendChild(segment);
+    }
+
+    gradeBar.setAttribute("role", "img");
+    gradeBar.setAttribute(
+        "aria-label",
+        descriptions.join(", ")
+    );
+
+    return gradeBar;
+}
+
+// Open the selected section's detail popup
+function showSectionDetails(course, section) {
+    document.querySelector("#detail-title").textContent =
+        `${course} - Section ${section.section}`;
+
+    document.querySelector("#detail-instructor").textContent =
+        `Instructor: ${section.instructor_as_reported}`;
+
+    document.querySelector("#detail-gpa").textContent =
+        section.gpa_reported ?? "N/A";
+
+    document.querySelector("#detail-students").textContent =
+        section.af_total;
+
+    // Display a larger grade bar
+    const gradeBar = createGradeBar(section);
+    gradeBar.classList.add("detail-grade-bar");
+
+    document.querySelector("#detail-bar-container")
+        .replaceChildren(gradeBar);
+
+    // Display grade counts and percentages
+    const gradeList = document.querySelector("#detail-grades");
+    gradeList.replaceChildren();
+
+    const grades = [
+        ["A", section.a],
+        ["B", section.b],
+        ["C", section.c],
+        ["D", section.d],
+        ["F", section.f]
+    ];
+
+    for (const [grade, count] of grades) {
+        const percentage = section.af_total > 0
+            ? (count / section.af_total) * 100
+            : 0;
+
+        const item = document.createElement("div");
+        item.className = "grade-detail-item";
+
+        const dot = document.createElement("span");
+        dot.className =
+            `grade-dot grade-${grade.toLowerCase()}`;
+
+        const label = document.createElement("span");
+        label.textContent =
+            `${grade}: ${count} (${percentage.toFixed(1)}%)`;
+
+        item.appendChild(dot);
+        item.appendChild(label);
+        gradeList.appendChild(item);
+    }
+
+    // Explain the data quality status
+    const status = document.querySelector("#detail-status");
+
+    if (section.quality_status === "needs_review") {
+        status.textContent =
+            "Needs Review: An automatic check flagged this record.";
+    } else {
+        status.textContent =
+            "Checks Passed: No automatic validation issue was flagged.";
+    }
+
+    // Show the popup
+    dialog.showModal();
+}
+
+// Search for courses
 form.addEventListener("submit", async function(event) {
     event.preventDefault();
 
-    // 1. Get course information from user inputs
     const subject = document.querySelector("#subject").value;
     const number = document.querySelector("#number").value.trim();
 
@@ -14,7 +141,6 @@ form.addEventListener("submit", async function(event) {
     results.replaceChildren();
 
     try {
-        // 2. Request course data from FastAPI
         const response = await fetch(
             `/courses/${encodeURIComponent(subject)}/${encodeURIComponent(number)}`
         );
@@ -25,77 +151,47 @@ form.addEventListener("submit", async function(event) {
             throw new Error(data.detail || "Search failed");
         }
 
-        // 3. Display search result summary
         message.textContent =
             `${data.course} - ${data.section_count} sections`;
 
-        // 4. Create one table row for each section
         for (const section of data.sections) {
             const row = document.createElement("tr");
 
+            // Create a clickable Section number
+            const sectionCell = document.createElement("td");
+            const sectionButton = document.createElement("button");
+
+            sectionButton.type = "button";
+            sectionButton.className = "section-link";
+            sectionButton.textContent = section.section;
+
+            sectionButton.addEventListener("click", function() {
+                showSectionDetails(data.course, section);
+            });
+
+            sectionCell.appendChild(sectionButton);
+            row.appendChild(sectionCell);
+
+            // Add the other table columns
             const values = [
-                section.section,
                 section.instructor_as_reported,
                 section.gpa_reported ?? "N/A",
                 section.af_total,
                 section.quality_status
             ];
 
-            // 5. Add regular table cells
             for (const value of values) {
                 const cell = document.createElement("td");
                 cell.textContent = String(value);
                 row.appendChild(cell);
             }
 
-            // 6. Create a Grade Distribution cell
+            // Add the grade distribution bar
             const gradeCell = document.createElement("td");
-            const gradeBar = document.createElement("div");
-
-            gradeBar.className = "grade-bar";
-
-            const grades = [
-                ["A", section.a],
-                ["B", section.b],
-                ["C", section.c],
-                ["D", section.d],
-                ["F", section.f]
-            ];
-
-            const descriptions = [];
-
-            // 7. Create a colored segment for each grade
-            for (const [grade, count] of grades) {
-                const percentage = section.af_total > 0
-                    ? (count / section.af_total) * 100
-                    : 0;
-
-                const segment = document.createElement("div");
-
-                segment.className =
-                    `grade-segment grade-${grade.toLowerCase()}`;
-
-                segment.style.width = `${percentage}%`;
-
-                segment.title =
-                    `${grade}: ${count} students (${percentage.toFixed(1)}%)`;
-
-                gradeBar.appendChild(segment);
-                descriptions.push(segment.title);
-            }
-
-            // 8. Add accessibility information
-            gradeBar.setAttribute("role", "img");
-            gradeBar.setAttribute(
-                "aria-label",
-                descriptions.join(", ")
-            );
-
-            // 9. Add the grade bar to the table row
-            gradeCell.appendChild(gradeBar);
+            gradeCell.appendChild(createGradeBar(section));
             row.appendChild(gradeCell);
 
-            // 10. Display the completed row
+            // Add the completed row to the table
             results.appendChild(row);
         }
 

@@ -48,6 +48,43 @@
         </p>
     </main>
 
+    <!-- Section detail popup -->
+    <dialog id="section-dialog" aria-labelledby="detail-title">
+        <div class="dialog-heading">
+            <h2 id="detail-title">Section Details</h2>
+            <button id="close-dialog" type="button" aria-label="Close">
+                X
+            </button>
+        </div>
+
+        <p id="detail-instructor"></p>
+
+        <div class="detail-stats">
+            <div>
+                <span>Reported GPA</span>
+                <strong id="detail-gpa"></strong>
+            </div>
+
+            <div>
+                <span>A-F Students</span>
+                <strong id="detail-students"></strong>
+            </div>
+        </div>
+
+        <h3>Grade Distribution</h3>
+
+        <div id="detail-bar-container"></div>
+        <div id="detail-grades" class="detail-grades"></div>
+
+        <p id="detail-status" class="note"></p>
+
+        <p class="note">
+            Historical grades only.
+            Instructor identities are not independently verified.
+        </p>
+    </dialog>
+
     <script src="./app.js"></script>
 </body>
 </html>
+
