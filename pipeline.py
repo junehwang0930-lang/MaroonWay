@@ -25,10 +25,10 @@ PDF_PATH = REPORTS / "spring_2026_arts_and_sciences.pdf"
 OFFICIAL_URL = "https://web-as.tamu.edu/gradereports/Report?year=2026&term=SPRING&college=AT"
 TERM = "2026-SPRING"
 COLLEGE = "AT"  # Arts & Sciences; verify this on downloaded PDF
-SUBJECTS = {"MATH", "STAT"}
+COUNT_FIELDS = ("a", "b", "c", "d", "f", "af_total", "i_count", "s_count", "u_count", "q_count", "x_count", "enrollment_total")
 
 # The registrar includes course-section lines such as MATH-151-500.
-SECTION_START = re.compile(r"^([A-Z]{2,5})-(\d{3,4}[A-Z]?)-([A-Z0-9]+)\b")
+SECTION_START = re.compile(r"^([A-Z]{2,8})-(\d{3,4}[A-Z]?)-([A-Z0-9]+)\b")
 PERCENT_ONLY = re.compile(r"^-?\d+(?:\.\d+)?%$")
 INSTRUCTOR_TEXT = re.compile(r"^[A-Z][A-Z .,'\-]*$")
 
@@ -93,6 +93,9 @@ def decode_row(text: str, page: int) -> Parsed | None:
     a, b, c, d, f, af_total = first_six
     i_count, s_count, u_count, q_count, x_count, enrollment_total = last_six
     issues = []
+    for field, value in zip(COUNT_FIELDS, first_six + last_six):
+        if value < 0:
+            issues.append(f"Negative count: {field}")
     if sum(first_six[:5]) != af_total:
         issues.append("A-F count does not equal reported A-F total")
     if af_total + i_count + s_count + u_count + q_count + x_count != enrollment_total:
@@ -117,55 +120,51 @@ def decode_row(text: str, page: int) -> Parsed | None:
     if section in {"ALL", "TOTAL", "TOT"}:
         issues.append("Summary row, not an individual section")
 
-    return Parsed(page, cleaned, subject, number, section, name,
+    return Parsed(page, text, subject, number, section, name,
                   a, b, c, d, f, af_total, gpa,
                   i_count, s_count, u_count, q_count, x_count,
                   enrollment_total, issues)
 
 
 def parse_pages(pages: list[str]):
-    """Yield parsed rows and review items (page, code, issue, raw text).
+    """Finalize at section/page boundaries, never at a partial instructor name.
 
-    The PDF often places each numeric cell on a separate line and follows
-    it with a standalone percent. We buffer until a complete row exists.
+    Unknown trailing text is retained in review rather than silently discarded.
+    Page-spanning rows remain uncertain; no name is guessed across headers.
     """
-    found = []
-    review = []
+    found, review = [], []
     for page_number, text in enumerate(pages, start=1):
-        active = None
+        active = []
+
+        def finish():
+            if not active:
+                return
+            raw = "\n".join(active)
+            code = normalize_line(active[0]).split()[0]
+            record = decode_row(raw, page_number)
+            if record is None:
+                review.append((page_number, code, "Could not parse section row; manual review required", raw))
+            elif 100 <= int(re.match(r"\d+", record.number).group()) <= 499:
+                found.append(record)
+            active.clear()
+
         for original_line in text.splitlines():
             line = normalize_line(original_line)
-            if not line or PERCENT_ONLY.fullmatch(line):
+            if not line:
                 continue
-            start = SECTION_START.match(line)
-            if start:
-                if active is not None:
-                    code = active.split(" ")[0]
-                    if code.startswith(("MATH-", "STAT-")):
-                        review.append((page_number, code, "Could not parse section row", active))
-                active = line
-            elif active is not None:
-                active += " " + line
-            else:
-                continue
-            if active is None:
-                continue
-            record = decode_row(active, page_number)
-            if record is not None:
-                if record.subject in SUBJECTS and 100 <= int(re.match(r"\d+", record.number).group()) <= 499:
-                    found.append(record)
-                active = None
-        if active is not None:
-            code = active.split(" ")[0]
-            if code.startswith(("MATH-", "STAT-")):
-                review.append((page_number, code, "Incomplete or unrecognized section row", active))
-    # An abnormal extraction can produce two rows with identical identities;
-    # retain a single record but flag the collision rather than silently merge.
+            if SECTION_START.match(line):
+                finish()
+                active.append(original_line)
+            elif active:
+                active.append(original_line)
+        finish()
     unique = {}
     for row in found:
         key = (row.subject, row.number, row.section)
         if key in unique:
-            review.append((row.source_page, "-".join(key), "Duplicate section identity", row.raw_row))
+            issue = "Duplicate section identity"
+            unique[key].issues.append(issue)
+            review.append((row.source_page, "-".join(key), issue, row.raw_row))
         else:
             unique[key] = row
     return list(unique.values()), review
