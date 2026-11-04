@@ -73,7 +73,8 @@ th, td {
 }
 /* Add black lines between grade segments */
 .grade-segment + .grade-segment {
-    box-shadow: inset 2px 0 0 #000000;
+    border-left: 1px dotted rgba(0, 0, 0, 0.65);
+    box-sizing: border-box;
 }
 
 .grade-a {
