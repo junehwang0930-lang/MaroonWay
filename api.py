@@ -46,16 +46,21 @@ def get_course(subject: str, course_number: str):
     try:
         query = """
         SELECT
-            section,
-            instructor_as_reported,
-            gpa_reported,
-            af_total,
-            quality_status
-        FROM grade_sections
-        WHERE term = ?
-          AND subject = ?
-          AND course_number = ?
-        ORDER BY gpa_reported DESC;
+        section,
+        instructor_as_reported,
+        gpa_reported,
+        af_total,
+        a,
+        b,
+        c,
+        d,
+        f,
+        quality_status
+    FROM grade_sections
+    WHERE term = ?
+    AND subject = ?
+    AND course_number = ?
+    ORDER BY gpa_reported DESC;
         """
 
         rows = connection.execute(
