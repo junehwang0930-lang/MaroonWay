@@ -3,7 +3,7 @@ import csv
 from pathlib import Path
 
 # Project file locations
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[1]
 DB_PATH = ROOT / "data" / "maroonway.db"
 OUTPUT = ROOT / "data" / "validation_sample.csv"
 

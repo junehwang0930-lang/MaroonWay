@@ -101,3 +101,31 @@ Sources:
 - Example open-source parser documentation (for understanding report format): https://github.com/IvanKuria/reveille-ratings/blob/main/scripts/build-grades/README.md
 
 This is an independent student project, not an official TAMU product.
+
+## Repository layout
+
+```text
+MaroonWay/
+├── pipeline.py          # Main download, import, and summary CLI
+├── schema.sql           # SQLite schema
+├── requirements.txt     # Python dependencies
+├── scripts/             # Database exploration and manual review tools
+├── tests/               # Parser tests
+├── data/                # Generated database, CSV exports, and review inputs
+└── reports/             # Official source PDFs
+```
+
+Run the helper tools from the repository root after importing a report:
+
+```bash
+python scripts/explore_db.py
+python scripts/validate_data.py
+```
+
+`validate_data.py` creates a sample CSV for manual PDF checks. To apply prepared instructor review notes from `data/manual_instructor_reviews.csv`, run:
+
+```bash
+python scripts/apply_name_reviews.py
+```
+
+Manual instructor reviews are separate from the original Registrar data. A candidate name is not a verified identity.

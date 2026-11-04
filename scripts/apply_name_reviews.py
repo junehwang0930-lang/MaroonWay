@@ -1,6 +1,6 @@
 """Apply manual instructor-name review notes without changing Registrar source data.
 
-Run from the MaroonWay project: py apply_name_reviews.py
+Run from the MaroonWay project: py scripts/apply_name_reviews.py
 Needs: data/maroonway.db and data/manual_instructor_reviews.csv
 """
 from __future__ import annotations
@@ -10,7 +10,7 @@ import shutil
 import sqlite3
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
 DB_PATH = DATA / "maroonway.db"
 REVIEWS_PATH = DATA / "manual_instructor_reviews.csv"

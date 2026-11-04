@@ -1,7 +1,8 @@
 import sqlite3
+from pathlib import Path
 
 # 1. Connect to our database
-connection = sqlite3.connect("data/maroonway.db")
+connection = sqlite3.connect(Path(__file__).resolve().parents[1] / "data" / "maroonway.db")
 
 # 2. Write an SQL query
 query = """
