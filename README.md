@@ -4,6 +4,12 @@
 
 The repository does not distribute a prebuilt database or source PDFs. The supplied Spring 2026 Arts & Sciences PDF has been exercised in an integration smoke test, and the supplied 313-record database was revalidated: **311 passed; 2 require review**. See [the verification report](docs/integrity-verification.md). Other terms and colleges require their own verified source PDFs; support for the date range does not mean those datasets are populated. **Compare 10–20 extracted rows against the original PDF before using the data.**
 
+## Primary GPA metric
+
+Grade Explorer and Section Comparison use **MaroonWay GPA (A-F based)**: `(4*A + 3*B + 2*C + D) / (A+B+C+D+F)`. Zero A-F students displays N/A. TAMU reported GPA remains separate and unchanged. A discrepancy is a warning, not proof of a source error or a reason by itself to hide a source-verified section.
+
+**Existing installations must apply policy v3 and revalidate preserved sources before using the new API.** First test on a database copy; see [methodology, safety rules and local upgrade instructions](docs/calculated-gpa-methodology.md). No existing section records need to be deleted or reimported.
+
 ## 1. Install Python (only once)
 
 Install Python 3.11 or later from https://www.python.org/downloads/ and install VS Code if you want an editor: https://code.visualstudio.com/ . On Windows, check **Add Python to PATH** when installing.
@@ -53,7 +59,7 @@ If you already have `data/maroonway.db`, **do not delete or reset it**. Stop imp
 python pipeline.py revalidate --pdf reports/spring_2026_arts_and_sciences.pdf
 ```
 
-This backs up the existing database as `data/maroonway.before-v2-<unique-id>.db` before its first v2 migration. It retains every original row, ID, source field, professor link, and manual-review column. The migration removes the old STAT/MATH-only constraint and adds separate source/import/audit tables and a public view. It does not overwrite original values or mark a professor identity as verified.
+Legacy pre-v2 databases receive a `data/maroonway.before-v2-<unique-id>.db` backup; an existing v2 database receives a `data/maroonway.before-v3-<unique-id>.db` backup before policy v3 is installed. Test the upgrade on a copy first, as described in the methodology guide. It retains every original row, ID, source field, professor link, and manual-review column. The migration removes the old STAT/MATH-only constraint and adds separate source/import/audit tables and a public view. It does not overwrite original values or mark a professor identity as verified.
 
 Each audit writes an immutable CSV under `data/validation_runs/` and reports total/passed/review counts. It verifies the original PDF hash and metadata, numeric checks, and each stored section's fields/page against a fresh extraction. Without the matching PDF, legacy rows remain unpublished. You can use `--db path/to/database.db` to target another existing database. Never substitute a sample DB for your real data.
 
@@ -99,7 +105,7 @@ node tests/test_frontend.cjs
 
 Regression tests use fictional data and temporary databases, including generated PDFs. They cover count/name parsing, metadata rejection, migration preservation, import history, publication filters, API query behavior, and out-of-order frontend requests. Node.js 18+ is needed only for the frontend tests; the UI itself runs in the browser. These are not full browser end-to-end tests or proof of compatibility with every TAMU report layout. A passing suite does not replace source review.
 
-For Windows/Python 3.14 or stricter resource checks, see [the SQLite/PDF cleanup fix](docs/windows-resource-fix.md). All original 43 tests are retained; five handle-lifecycle regressions bring the current total to 48. To also fail on garbage-collection resource leaks, run:
+For Windows/Python 3.14 or stricter resource checks, see [the SQLite/PDF cleanup fix](docs/windows-resource-fix.md). All original 43 tests are retained; subsequent integrity and GPA tests are also included. The current total is 80 Python tests and 9 JavaScript tests. To also fail on garbage-collection resource leaks, run:
 
 ```bash
 python -W error::ResourceWarning tests/run_checks.py
@@ -134,12 +140,14 @@ Open these paths on the local server (default host `127.0.0.1`, port `8000`):
 
 Serve the frontend through FastAPI; opening `frontend/index.html` directly does not provide the API needed for search. Stop the development server with Ctrl+C. `--reload` is for local development.
 
+The API returns `gpa_calculated` (primary sort metric), unchanged `gpa_reported`, absolute `gpa_difference`, and `gpa_discrepancy` (1/0, or NULL when unavailable). Credit-hour weighting can make the reported value differ from a headcount average. Historical GPA is not a guaranteed difficulty score.
+
 The API accepts all supported-format undergraduate subjects and the six supported terms. The default is Spring 2026; for example, `/courses/CHEM/119?term=2023-FALL&college=AT` selects a term and optional College. The website lets you choose the term and enter a subject. Only audited, unchanged rows without unresolved conflicts are returned. Invalid course/term input returns 400, an unavailable or unmigrated database returns 503, and no publishable matching rows returns 404. Missing or quarantined records are unknown, not zero grades. A welcome response alone does not verify database access.
 
 ## Integrity guarantees and remaining limits
 
-- GPA comparison accepts an absolute difference of **0.005 or less**, including the boundary. Original reported GPA/counts are never replaced; larger differences remain reviewable.
-- Negative/non-integer counts, inconsistent totals/GPA, missing initials, duplicate identities, and uncertain extraction prevent publication. Raw evidence is retained for review.
+- Differences above **0.005** receive a discrepancy warning; exact boundary comparison avoids floating-point misclassification. All source-verified sections use the A-F calculated GPA, regardless of a valid reported GPA discrepancy.
+- Negative/non-integer counts, inconsistent totals, malformed/out-of-range GPA, missing initials, duplicate identities, source conflicts and uncertain extraction prevent publication. Raw evidence is retained for review.
 - Instructor names are buffered to section/page boundaries. Unknown trailing text and page-spanning partial rows go to review rather than being guessed or dropped. Recognized report summary rows are excluded from section names.
 - Each import gets its own UUID/timestamp CSV and database history; legacy review files are never overwritten. Repeated imports do not replace existing source rows. Current public CSV export is an atomic snapshot, not the history store.
 - New browser searches cancel the previous request and guard both delayed responses and errors, so only the newest search can update results.
@@ -225,7 +233,7 @@ See [the Unicode name fix and all 23 GPA comparisons](docs/spring-2026-import-re
 
 ## GPA investigations (read-only by default)
 
-See [the safe investigation guide](docs/gpa-discrepancy-investigation.md) for official-source limitations, the separate opt-in review schema, and explicit test-copy migration instructions. The API/public approval rules are unchanged. Generate a new PDF-only CSV without opening a database:
+See [the safe investigation guide](docs/gpa-discrepancy-investigation.md) for official-source limitations, the separate opt-in review schema, and explicit test-copy migration instructions. Investigation classifications never grant publication. Current calculated-GPA publication rules are described in the methodology guide above. Generate a new PDF-only CSV without opening a database:
 
 ```bash
 python scripts/investigate_gpa.py --pdf reports/spring_2026_arts_and_sciences.pdf --include-section BIOL-491-500

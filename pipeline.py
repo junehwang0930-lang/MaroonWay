@@ -229,7 +229,7 @@ def import_pdf(path: Path, *, year=2026, semester="SPRING", college="AT", colleg
     data = path.read_bytes()
     if not data.startswith(b"%PDF-"):
         raise RuntimeError("Input is not a PDF")
-    pages = read_pdf_pages(path)
+    pages = read_pdf_pages(data)
     metadata = validate_metadata(pages, year=year, semester=semester, college=college, college_name=college_name)
     rows, rejected = parse_pages(pages)
     # Validation precedes all DB writes, including migrations.
@@ -281,10 +281,10 @@ def import_pdf(path: Path, *, year=2026, semester="SPRING", college="AT", colleg
             con.execute("insert into import_records (run_id,grade_section_id,snapshot_json) values (?,?,?)", (run_id, grade_id, snapshot(candidate)))
             if con.execute("select 1 from import_conflicts where grade_section_id=?", (grade_id,)).fetchone():
                 issues.append("Unresolved conflicting import; original row retained")
-            from storage import row_issues
+            from storage import row_issues, record_validation
             issues.extend(row_issues(stored))
             issues = list(dict.fromkeys(issues))
-            con.execute("insert into grade_validations (run_id,grade_section_id,status,issues_json,snapshot_json) values (?,?,?,?,?)", (run_id,grade_id,"needs_review" if issues else "checks_passed",json.dumps(issues),snapshot(stored)))
+            record_validation(con, run_id, stored, issues)
             for issue in issues:
                 quality.append((row.source_page, f"{row.subject}-{row.number}-{row.section}", issue, row.raw_row))
         con.executemany("insert into import_review_items (run_id,source_page,section_code,issue,raw_text) values (?,?,?,?,?)", [(run_id,*item) for item in quality])
@@ -305,7 +305,7 @@ def export_csv(db_path=None) -> None:
     import os
     import tempfile
     path = Path(db_path) if db_path is not None else DB_PATH
-    fields = ("term", "college", "subject", "course_number", "section", "instructor_as_reported", *COUNT_FIELDS, "gpa_reported", "source_page", "source_url", "source_sha256")
+    fields = ("term", "college", "subject", "course_number", "section", "instructor_as_reported", *COUNT_FIELDS, "gpa_reported", "gpa_calculated", "gpa_difference", "gpa_discrepancy", "source_page", "source_url", "source_sha256")
     with closing(sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)) as con, con:
         records = con.execute(f"SELECT {','.join(fields)} FROM public_grade_sections ORDER BY term,college,subject,course_number,section").fetchall()
     target = path.parent / "public_grade_sections.csv"
@@ -391,7 +391,7 @@ def main():
                 raise FileNotFoundError(f"No database at {args.db}")
             if args.pdf:
                 content = args.pdf.read_bytes()
-                metadata = validate_metadata(read_pdf_pages(args.pdf), year=args.year, semester=args.semester, college=args.college, college_name=args.college_name)
+                metadata = validate_metadata(read_pdf_pages(content), year=args.year, semester=args.semester, college=args.college, college_name=args.college_name)
                 migrate(args.db)
                 with closing(sqlite3.connect(args.db)) as con, con:
                     register_source(con, content, metadata)

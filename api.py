@@ -59,6 +59,9 @@ def get_course(subject: str, course_number: str, term: str = "2026-SPRING", coll
             section,
             instructor_as_reported,
             gpa_reported,
+            gpa_calculated,
+            gpa_difference,
+            gpa_discrepancy,
             af_total,
             a,
             b,
@@ -76,7 +79,7 @@ def get_course(subject: str, course_number: str, term: str = "2026-SPRING", coll
         AND subject = ?
         AND course_number = ?
         AND (? IS NULL OR college = ?)
-        ORDER BY gpa_reported DESC;
+        ORDER BY gpa_calculated DESC, college, section;
         """
 
         rows = connection.execute(

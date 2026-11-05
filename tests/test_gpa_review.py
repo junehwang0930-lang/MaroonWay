@@ -100,7 +100,7 @@ class ReviewStorageTests(unittest.TestCase):
             self.assertEqual(con.execute('select * from grade_sections').fetchall(),self.original)
             self.assertEqual(con.execute('select count(*) from grade_validations').fetchone()[0],1)
             self.assertEqual(con.execute('select count(*) from validation_runs').fetchone()[0],1)
-            self.assertEqual(con.execute('select version from schema_migrations').fetchall(),[(2,)])
+            self.assertEqual(con.execute('select version from schema_migrations order by version').fetchall(),[(2,),(3,)])
             self.assertEqual(con.execute('select version from gpa_review_migrations').fetchall(),[(1,)])
             self.assertEqual(con.execute("select sql from sqlite_master where name='public_grade_sections'").fetchone()[0],self.public_sql)
 

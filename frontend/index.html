@@ -75,7 +75,10 @@
                         <th>Compare</th>
                         <th>Section</th>
                         <th>Instructor</th>
-                        <th>GPA</th>
+                        <th>MaroonWay GPA (A-F based)</th>
+                        <th>TAMU Reported GPA</th>
+                        <th>Absolute GPA Difference</th>
+                        <th>GPA Discrepancy</th>
                         <th>A-F Students</th>
                         <th>Status</th>
                         <th>Grade Distribution</th>
@@ -91,7 +94,12 @@
 
         <!-- Disclaimer -->
         <p class="note">
-            Historical grades only.
+            MaroonWay GPA (A-F based) = (4A + 3B + 2C + D) / (A + B + C + D + F).
+            This is an average by student count, with N/A when there are no A-F students.
+            TAMU Reported GPA preserves the original PDF value; a difference flag does not establish a source error.
+            The official GPA can use credit-hour weighting, so courses with variable or zero credit hours may differ.
+            Historical GPA is not a guaranteed measure of course difficulty.
+            Future Top 3 schedule recommendations will use the same A-F calculation.
             Instructor identities are not independently verified.
         </p>
 
@@ -152,7 +160,10 @@
 
         <!-- Comparison Disclaimer -->
         <p class="note">
-            Historical data only.
+            MaroonWay GPA is an A-F average by student count, not an official credit-hour-weighted GPA.
+            Courses with variable or zero credit hours may differ; a discrepancy alone does not mean the PDF is wrong.
+            N/A means there are no A-F students or the value is unavailable.
+            Historical GPA is not a guaranteed measure of course difficulty.
             Q Share represents Q grades divided by
             reported enrollment total.
             Instructor identities are not independently verified.

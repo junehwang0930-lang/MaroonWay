@@ -18,15 +18,17 @@ with closing(sqlite3.connect(DB_PATH.resolve().as_uri() + "?mode=ro", uri=True))
     SELECT
         section,
         instructor_as_reported,
-        gpa_reported,
-        af_total
+        gpa_calculated,
+        af_total,
+        gpa_reported
     FROM public_grade_sections
     WHERE subject = ? AND course_number = ?
-    ORDER BY gpa_reported DESC;
+    ORDER BY gpa_calculated DESC;
     """
 
     cursor = connection.execute(query, (subject, course))
 
-    # Print each result
+    # Keep the calculated metric primary and the unmodified source GPA separate.
+    print("Section | Instructor | MaroonWay GPA (A-F based) | A-F students | TAMU Reported GPA")
     for row in cursor:
         print(row)

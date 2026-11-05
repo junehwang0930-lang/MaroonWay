@@ -19,6 +19,17 @@ function percent(part, total) {
     return `${(part / total * 100).toFixed(1)}%`;
 }
 
+// Format API values for display without replacing the original reported GPA.
+function formatGpa(value) {
+    if (value == null || !Number.isFinite(value)) return "N/A";
+    return value.toFixed(3);
+}
+
+function discrepancyLabel(section) {
+    if (section.gpa_difference == null) return "N/A";
+    return section.gpa_discrepancy ? "Difference flagged" : "No difference flagged";
+}
+
 // Create a colored grade bar
 function createGradeBar(section) {
     const bar = document.createElement("div");
@@ -109,9 +120,27 @@ compareButton.addEventListener("click", function() {
     );
 
     addCompareRow(
-        "Reported GPA",
-        left.gpa_reported ?? "N/A",
-        right.gpa_reported ?? "N/A"
+        "MaroonWay GPA (A-F based)",
+        formatGpa(left.gpa_calculated),
+        formatGpa(right.gpa_calculated)
+    );
+
+    addCompareRow(
+        "TAMU Reported GPA",
+        formatGpa(left.gpa_reported),
+        formatGpa(right.gpa_reported)
+    );
+
+    addCompareRow(
+        "Absolute GPA Difference",
+        formatGpa(left.gpa_difference),
+        formatGpa(right.gpa_difference)
+    );
+
+    addCompareRow(
+        "GPA Discrepancy",
+        discrepancyLabel(left),
+        discrepancyLabel(right)
     );
 
     addCompareRow("A-F Students", left.af_total, right.af_total);
@@ -241,7 +270,10 @@ form.addEventListener("submit", async function(event) {
             const values = [
                 `${section.college} · ${section.section}`,
                 section.instructor_as_reported,
-                section.gpa_reported ?? "N/A",
+                formatGpa(section.gpa_calculated),
+                formatGpa(section.gpa_reported),
+                formatGpa(section.gpa_difference),
+                discrepancyLabel(section),
                 section.af_total,
                 section.quality_status
             ];

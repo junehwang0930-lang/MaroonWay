@@ -23,7 +23,7 @@ def quote(name):
     return '"'+name.replace('"','""')+'"'
 
 
-def migrate(path):
+def _migrate_v2(path):
     """Back up before the first migration; preserve IDs, extra columns and SQL objects.
 
     A supported legacy CHECK is removed by copying into a transactionally rebuilt
@@ -96,6 +96,66 @@ def migrate(path):
         raise
     finally:
         con.close()
+
+
+def migrate(path):
+    """Install policy v3 without promoting historical audits or editing source rows."""
+    path = Path(path)
+    existing_v2 = False
+    if path.is_file():
+        with closing(sqlite3.connect(path)) as con:
+            if con.execute("select 1 from sqlite_master where name='schema_migrations'").fetchone():
+                if con.execute('select 1 from schema_migrations where version=3').fetchone():
+                    return
+                existing_v2 = bool(con.execute('select 1 from schema_migrations where version=2').fetchone())
+    _migrate_v2(path)
+    with closing(sqlite3.connect(path)) as con:
+        if existing_v2:
+            backup = path.with_name(path.stem + '.before-v3-' + token() + '.db')
+            with closing(sqlite3.connect(backup)) as target:
+                con.backup(target)
+        with con:
+            con.execute('BEGIN IMMEDIATE')
+            con.execute('CREATE TABLE grade_validation_policies (validation_id INTEGER PRIMARY KEY REFERENCES grade_validations(id), policy_version INTEGER NOT NULL CHECK(policy_version=3))')
+            con.execute('DROP VIEW public_grade_sections')
+            match = ' AND '.join(f'g.{quote(k)} IS json_extract(v.snapshot_json,\'$.{k}\')' for k in SOURCE_FIELDS)
+            nonnegative = ' AND '.join(f"typeof(g.{k})='integer' AND g.{k}>=0" for k in COUNTS)
+            points = '(4.0*g.a+3.0*g.b+2.0*g.c+g.d)'
+            calculated = f'({points}/NULLIF(g.af_total,0))'
+            # Fresh policy audits retain the parser's exact Fraction comparison.
+            # Reuse that evidence so floating point noise cannot alter the boundary.
+            discrepancy = "CASE WHEN g.af_total=0 OR g.gpa_reported IS NULL THEN NULL ELSE EXISTS (SELECT 1 FROM json_each(v.issues_json) WHERE value='Reported GPA does not match A-F counts') END"
+            con.execute(f'''CREATE VIEW public_grade_sections AS
+                SELECT g.*, {calculated} AS gpa_calculated,
+                    abs({calculated}-g.gpa_reported) AS gpa_difference,
+                    {discrepancy} AS gpa_discrepancy
+                FROM grade_sections g JOIN grade_validations v
+                ON v.id=(SELECT max(id) FROM grade_validations WHERE grade_section_id=g.id)
+                JOIN grade_validation_policies p ON p.validation_id=v.id AND p.policy_version=3
+                WHERE v.status='checks_passed' AND {match} AND {nonnegative}
+                AND g.a+g.b+g.c+g.d+g.f=g.af_total
+                AND g.af_total+g.i_count+g.s_count+g.u_count+g.q_count+g.x_count=g.enrollment_total
+                AND NOT EXISTS (SELECT 1 FROM import_conflicts c WHERE c.grade_section_id=g.id)''')
+            con.execute('insert into schema_migrations values (3,?)', (datetime.now(timezone.utc).isoformat(),))
+            if con.execute('pragma foreign_key_check').fetchall():
+                raise RuntimeError('Policy migration foreign-key check failed')
+
+
+def blocking_issues(issues, row):
+    """Retain GPA warnings as evidence, but separate them from integrity failures."""
+    allowed = {'Reported GPA does not match A-F counts', 'No letter-graded students to compute GPA'}
+    if row['af_total'] == 0:
+        allowed.add('GPA missing from report')
+    return [issue for issue in issues if issue not in allowed]
+
+
+def record_validation(con, run_id, row, issues):
+    """Append a fresh policy audit; never relabel or overwrite an old audit."""
+    status = 'needs_review' if blocking_issues(issues, row) else 'checks_passed'
+    cursor = con.execute('insert into grade_validations (run_id,grade_section_id,status,issues_json,snapshot_json) values (?,?,?,?,?)',
+                         (run_id,row['id'],status,json.dumps(issues),snapshot(row)))
+    con.execute('insert into grade_validation_policies values (?,3)', (cursor.lastrowid,))
+    return status
 
 
 def register_source(con, content, metadata):
@@ -187,12 +247,12 @@ def revalidate(path):
                 actual=parsed.get((row['subject'],row['course_number'],row['section']))
                 if meta.term!=row['term'] or meta.college!=row['college']:
                     issues.append('Source metadata differs from stored term/college')
-                if not actual or actual.issues or actual.source_page!=row['source_page'] or not matches_source(row, actual):
+                if not actual or blocking_issues(actual.issues, row) or actual.source_page!=row['source_page'] or not matches_source(row, actual):
                     issues.append('Stored row differs from verified PDF extraction or source row needs review')
             if con.execute('select 1 from import_conflicts where grade_section_id=?',(row['id'],)).fetchone():
                 issues.append('Unresolved conflicting import; original row retained')
-            status='needs_review' if issues else 'checks_passed'
-            con.execute('insert into grade_validations (run_id,grade_section_id,status,issues_json,snapshot_json) values (?,?,?,?,?)',(run_id,row['id'],status,json.dumps(issues),snapshot(row)))
+            issues = list(dict.fromkeys(issues))
+            status = record_validation(con, run_id, row, issues)
             results.append((row['id'],row['term'],row['college'],row['subject'],row['course_number'],row['section'],status,'; '.join(issues),row['source_sha256'],row['source_page']))
         # An exclusive file prevents accidental audit-history overwrite.
         with report.open('x',newline='',encoding='utf-8') as handle:
