@@ -169,6 +169,8 @@ This is an independent student project, not an official TAMU product.
 
 ## Repository layout
 
+New to the project? Start with the [file-by-file guide and before/after layout](docs/project-structure.md). Core entry points stay at the root; all helper scripts are in `scripts/`. Run the commands below from the repository root.
+
 ```text
 MaroonWay/
 ├── pipeline.py          # Main download, import, and summary CLI
@@ -176,13 +178,11 @@ MaroonWay/
 ├── storage.py           # Versioned migration, source preservation, row audits
 ├── report_metadata.py   # Fail-closed report headers and supported terms
 ├── frontend/            # Course-search and section-comparison UI
-├── analyze_gpa.py       # Section GPAs for the hard-coded course
-├── course_summary.py    # Weighted GPA for the hard-coded term/course
-├── instructor_summary.py # Summaries grouped by published instructor text
 ├── schema.sql           # SQLite schema
 ├── requirements.txt     # Python dependencies
-├── scripts/             # Database exploration and manual review tools
+├── scripts/             # All analysis, exploration and manual-review tools
 ├── tests/               # Python regressions and Node request-race tests
+├── docs/                # File guide, implementation history and verification
 ├── data/                # Generated database, CSV exports, and review inputs
 └── reports/             # Official source PDFs
 ```
@@ -216,4 +216,4 @@ term,section_code,instructor_as_reported,reviewed_instructor_name,review_status,
 
 The script creates `data/maroonway_before_name_reviews.db` once and writes a separate `data/grade_sections_reviewed.csv`. It adds review fields without changing the original instructor text, quality status, or `professor_id`. The existing backup is not refreshed on later runs. The API currently displays the original instructor text, not the reviewed name.
 
-For console summaries, run `python analyze_gpa.py`, `python course_summary.py`, or `python instructor_summary.py` after import. These scripts currently select STAT 211 in code; edit their selection variables when exploring another course. All three read the validated public view. `analyze_gpa.py` lists matching sections across imported terms; the other two select Spring 2026. Set selection variables explicitly when comparing periods.
+For console summaries, run `python scripts/analyze_gpa.py`, `python scripts/course_summary.py`, or `python scripts/instructor_summary.py` after import. These scripts currently select STAT 211 in code; edit their selection variables when exploring another course. All three read the validated public view. `analyze_gpa.py` lists matching sections across imported terms; the other two select Spring 2026. Set selection variables explicitly when comparing periods.

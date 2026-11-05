@@ -61,10 +61,11 @@ class PublicationTests(unittest.TestCase):
         import shutil, subprocess, sys
         for script in ['analyze_gpa.py','course_summary.py','instructor_summary.py']:
             with self.subTest(script=script):
-                shutil.copy2(p.ROOT/script,self.root/script)
+                (self.root/'scripts').mkdir(exist_ok=True)
+                shutil.copy2(p.ROOT/'scripts'/script,self.root/'scripts'/script)
                 (self.root/'data').mkdir(exist_ok=True)
                 shutil.copy2(self.db,self.root/'data/maroonway.db')
-                result=subprocess.run([sys.executable,str(self.root/script)],capture_output=True,text=True)
+                result=subprocess.run([sys.executable,str(self.root/'scripts'/script)],cwd=self.root,capture_output=True,text=True)
                 self.assertEqual(result.returncode,0,result.stderr)
                 if script=='course_summary.py':
                     self.assertIn('Sections: 1',result.stdout)

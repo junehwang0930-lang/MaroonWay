@@ -1,5 +1,0 @@
-After importing the registrar PDF, this folder will hold:
-  maroonway.db (SQLite database)
-  grade_sections.csv (reviewable records)
-  quality_review.csv (parsing and data warnings)
-No actual TAMU grade records are bundled in the starter kit.
