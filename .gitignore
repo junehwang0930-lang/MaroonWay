@@ -16,3 +16,6 @@ data/import_reviews/
 data/validation_runs/
 data/sources/
 data/*.csv.tmp
+
+# Append-only GPA investigations remain local.
+data/gpa_investigations/

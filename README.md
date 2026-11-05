@@ -222,3 +222,13 @@ For console summaries, run `python scripts/analyze_gpa.py`, `python scripts/cour
 ## Spring 2026 source review
 
 See [the Unicode name fix and all 23 GPA comparisons](docs/spring-2026-import-review.md) for the distinction between the two corrected SPAN parsing failures and unresolved source GPA/name issues. Original GPA values and missing initials are not inferred or replaced.
+
+## GPA investigations (read-only by default)
+
+See [the safe investigation guide](docs/gpa-discrepancy-investigation.md) for official-source limitations, the separate opt-in review schema, and explicit test-copy migration instructions. The API/public approval rules are unchanged. Generate a new PDF-only CSV without opening a database:
+
+```bash
+python scripts/investigate_gpa.py --pdf reports/spring_2026_arts_and_sciences.pdf --include-section BIOL-491-500
+```
+
+Calculated GPA means an A–F headcount average, not the Registrar's official GPA. The command never replaces existing reports. Official credit/rule evidence was inaccessible during this investigation; unexplained cases remain unresolved.
