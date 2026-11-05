@@ -14,6 +14,7 @@ import math
 import re
 import sqlite3
 import sys
+import unicodedata
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -35,7 +36,27 @@ COUNT_FIELDS = ("a", "b", "c", "d", "f", "af_total", "i_count", "s_count", "u_co
 # The registrar includes course-section lines such as MATH-151-500.
 SECTION_START = re.compile(r"^([A-Z]{2,8})-(\d{3,4}[A-Z]?)-([A-Z0-9]+)\b")
 PERCENT_ONLY = re.compile(r"^-?\d+(?:\.\d+)?%$")
-INSTRUCTOR_TEXT = re.compile(r"^[A-Z][A-Z .,'\-]*$")
+def valid_instructor_name(name: str) -> bool:
+    """Allow Unicode letters and attached marks, never digits/control/symbols.
+
+    Validate a normalized copy while retaining the exact extracted spelling.
+    """
+    checked = unicodedata.normalize("NFC", name)
+    if not checked or len(name) > 75 or not checked[0].isalpha():
+        return False
+    previous_category = ""
+    for char in checked:
+        category = unicodedata.category(char)
+        if category.startswith("L"):
+            pass
+        elif category in {"Mn", "Mc"} and previous_category.startswith(("L", "M")):
+            pass
+        elif char in " .,'-’‘‐‑":
+            pass
+        else:
+            return False
+        previous_category = category
+    return True
 
 
 @dataclass
@@ -94,7 +115,7 @@ def decode_row(text: str, page: int) -> Parsed | None:
     except ValueError:
         return None
     name = " ".join(parts[14:]).strip()
-    if not name or not INSTRUCTOR_TEXT.fullmatch(name) or len(name) > 75:
+    if not valid_instructor_name(name):
         return None
 
     a, b, c, d, f, af_total = first_six
@@ -120,9 +141,10 @@ def decode_row(text: str, page: int) -> Parsed | None:
             issues.append("Reported GPA does not match A-F counts")
     else:
         issues.append("No letter-graded students to compute GPA")
+    initial = unicodedata.normalize("NFC", name.split()[-1])
     if name in {"STAFF", "TBA", "TBD", "UNKNOWN"}:
         issues.append("Instructor is not identified")
-    elif not re.search(r"\s[A-Z]$", name):
+    elif len(name.split()) < 2 or len(initial) != 1 or not initial.isupper():
         issues.append("Instructor name lacks an identifiable final initial")
     if section in {"ALL", "TOTAL", "TOT"}:
         issues.append("Summary row, not an individual section")

@@ -47,3 +47,23 @@ class RowIntegrityTests(unittest.TestCase):
         self.assertEqual(len(rows),1)
         self.assertEqual(rows[0].instructor_raw,'SMITH B')
         self.assertFalse(review)
+
+    def test_unicode_names_preserve_original_spelling(self):
+        for name in ['GONZÁLEZ SOMOZA M', 'GONZA\u0301LEZ SOMOZA M', 'O’NEILL Á', 'MUÑOZ É', 'González Somoza M']:
+            with self.subTest(name=name):
+                row=decode_row(GOOD.replace('SMITH B',name),1)
+                self.assertIsNotNone(row)
+                self.assertEqual(row.instructor_raw,name)
+                self.assertFalse(row.issues)
+
+    def test_unicode_name_does_not_relax_integrity_checks(self):
+        row=decode_row(GOOD.replace('SMITH B','GONZÁLEZ SOMOZA').replace('3.500','0.000'),1)
+        self.assertIsNotNone(row)
+        self.assertIn('Instructor name lacks an identifiable final initial',row.issues)
+        self.assertIn('Reported GPA does not match A-F counts',row.issues)
+        self.assertIsNone(decode_row(GOOD.replace('SMITH B','GONZÁLEZ 123 M'),1))
+
+    def test_unicode_symbols_controls_and_unattached_marks_are_rejected(self):
+        for name in ['SMITH 😀 B','SMITH\u202e B','SMITH \u0301 B','SMITH <B>','SMITH; B']:
+            with self.subTest(name=name):
+                self.assertIsNone(decode_row(GOOD.replace('SMITH B',name),1))

@@ -184,3 +184,15 @@ class StorageTests(unittest.TestCase):
         with patch.object(p,'REPORTS',self.root),patch.object(p,'PDF_PATH',self.pdf),patch('urllib.request.urlopen',return_value=BytesIO(b'%PDF-changed-official-report')):
             with self.assertRaises(RuntimeError):p.download()
         self.assertEqual(self.pdf.read_bytes(),original)
+
+    def test_unicode_name_survives_pdf_import_export_and_revalidation(self):
+        import storage
+        name='GONZÁLEZ SOMOZA M'
+        write_pdf(self.pdf,HEADER+GOOD.replace('STAT-211-200','SPAN-101-501').replace('SMITH B',name))
+        with contextlib.redirect_stdout(io.StringIO()):p.import_pdf(self.pdf)
+        report=storage.revalidate(self.db)
+        self.assertEqual(report['checks_passed'],1)
+        with closing(sqlite3.connect(self.db)) as con:
+            self.assertEqual(con.execute('select instructor_as_reported from public_grade_sections').fetchone()[0],name)
+        with (self.root/'public_grade_sections.csv').open(encoding='utf-8') as handle:
+            self.assertEqual(next(csv.DictReader(handle))['instructor_as_reported'],name)

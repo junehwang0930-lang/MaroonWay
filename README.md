@@ -217,3 +217,7 @@ term,section_code,instructor_as_reported,reviewed_instructor_name,review_status,
 The script creates `data/maroonway_before_name_reviews.db` once and writes a separate `data/grade_sections_reviewed.csv`. It adds review fields without changing the original instructor text, quality status, or `professor_id`. The existing backup is not refreshed on later runs. The API currently displays the original instructor text, not the reviewed name.
 
 For console summaries, run `python scripts/analyze_gpa.py`, `python scripts/course_summary.py`, or `python scripts/instructor_summary.py` after import. These scripts currently select STAT 211 in code; edit their selection variables when exploring another course. All three read the validated public view. `analyze_gpa.py` lists matching sections across imported terms; the other two select Spring 2026. Set selection variables explicitly when comparing periods.
+
+## Spring 2026 source review
+
+See [the Unicode name fix and all 23 GPA comparisons](docs/spring-2026-import-review.md) for the distinction between the two corrected SPAN parsing failures and unresolved source GPA/name issues. Original GPA values and missing initials are not inferred or replaced.
