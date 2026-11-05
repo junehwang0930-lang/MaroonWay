@@ -1,3 +1,4 @@
+from contextlib import closing
 import sqlite3
 import csv
 from pathlib import Path
@@ -11,31 +12,30 @@ OUTPUT = ROOT / "data" / "validation_sample.csv"
 if OUTPUT.exists():
     print("Validation file already exists!")
 else:
-    connection = sqlite3.connect(DB_PATH)
+    with closing(sqlite3.connect(DB_PATH)) as connection:
 
-    query = """
-    SELECT
-        subject,
-        course_number,
-        section,
-        instructor_as_reported,
-        a, b, c, d, f,
-        af_total,
-        gpa_reported,
-        source_page
-    FROM grade_sections
-    WHERE subject = ?
-    ORDER BY RANDOM()
-    LIMIT 5;
-    """
+        query = """
+        SELECT
+            subject,
+            course_number,
+            section,
+            instructor_as_reported,
+            a, b, c, d, f,
+            af_total,
+            gpa_reported,
+            source_page
+        FROM grade_sections
+        WHERE subject = ?
+        ORDER BY RANDOM()
+        LIMIT 5;
+        """
 
-    rows = []
+        rows = []
 
-    for subject in ["MATH", "STAT"]:
-        cursor = connection.execute(query, (subject,))
-        rows.extend(cursor.fetchall())
+        for subject in ["MATH", "STAT"]:
+            cursor = connection.execute(query, (subject,))
+            rows.extend(cursor.fetchall())
 
-    connection.close()
 
     with OUTPUT.open("w", newline="", encoding="utf-8-sig") as file:
         writer = csv.writer(file)

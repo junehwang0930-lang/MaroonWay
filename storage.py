@@ -1,4 +1,5 @@
 """Versioned, non-destructive SQLite migration and append-only integrity evidence."""
+from contextlib import closing
 from datetime import datetime, timezone
 import csv
 import hashlib
@@ -38,7 +39,7 @@ def migrate(path):
                 return
         if existed:
             backup=path.with_name(path.stem+'.before-v2-'+token()+'.db')
-            with sqlite3.connect(backup) as target:
+            with closing(sqlite3.connect(backup)) as target:
                 con.backup(target)
         has_table=con.execute("select sql from sqlite_master where type='table' and name='grade_sections'").fetchone()
         if not has_table:
@@ -158,7 +159,7 @@ def revalidate(path):
     report=path.parent/'validation_runs'/f'{run_id}.csv'
     report.parent.mkdir(exist_ok=True)
     cache={}
-    with sqlite3.connect(path) as con:
+    with closing(sqlite3.connect(path)) as con, con:
         con.row_factory=sqlite3.Row
         con.execute('PRAGMA foreign_keys=ON')
         for doc in con.execute('select * from source_documents'):
@@ -168,10 +169,7 @@ def revalidate(path):
                 if hashlib.sha256(content).hexdigest()!=digest: raise ValueError('Source checksum mismatch')
                 meta=ReportMetadata(**json.loads(doc['metadata_json']))
                 # Read preserved bytes, not an arbitrary current file at the old path.
-                import tempfile
-                with tempfile.TemporaryDirectory() as tmp:
-                    source=Path(tmp)/'source.pdf'; source.write_bytes(content)
-                    pages=read_pdf_pages(source)
+                pages=read_pdf_pages(content)
                 validate_metadata(pages,**vars(meta))
                 parsed,_=parse_pages(pages)
                 cache[digest]=(meta,{(r.subject,r.number,r.section):r for r in parsed})

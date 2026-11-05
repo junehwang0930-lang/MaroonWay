@@ -5,6 +5,8 @@ professors from abbreviated names or access Rate My Professors.
 """
 from __future__ import annotations
 
+from contextlib import closing
+
 import argparse
 import csv
 import hashlib
@@ -177,13 +179,15 @@ def parse_pages(pages: list[str]):
     return list(unique.values()), review
 
 
-def read_pdf_pages(path: Path) -> list[str]:
+def read_pdf_pages(path: Path | bytes) -> list[str]:
     try:
         import pymupdf as fitz
     except ImportError as exc:
         raise RuntimeError("Install the PDF reader first: python -m pip install -r requirements.txt") from exc
     try:
-        with fitz.open(str(path)) as document:
+        content = path if isinstance(path, bytes) else path.read_bytes()
+        # MuPDF sees bytes only, so even a failed open cannot retain an OS file handle.
+        with fitz.open(stream=content, filetype="pdf") as document:
             return [page.get_text("text", sort=True) for page in document]
     except Exception as exc:
         raise RuntimeError(f"Could not read PDF: {exc}") from exc
@@ -224,7 +228,7 @@ def import_pdf(path: Path, *, year=2026, semester="SPRING", college="AT", colleg
     quality = list(rejected)
     if not rows:
         quality.append((0, "", "No supported undergraduate section rows found", ""))
-    with sqlite3.connect(DB_PATH) as con:
+    with closing(sqlite3.connect(DB_PATH)) as con, con:
         con.row_factory = sqlite3.Row
         con.execute("PRAGMA foreign_keys=ON")
         register_source(con, data, metadata)
@@ -278,7 +282,7 @@ def export_csv(db_path=None) -> None:
     import tempfile
     path = Path(db_path) if db_path is not None else DB_PATH
     fields = ("term", "college", "subject", "course_number", "section", "instructor_as_reported", *COUNT_FIELDS, "gpa_reported", "source_page", "source_url", "source_sha256")
-    with sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True) as con:
+    with closing(sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)) as con, con:
         records = con.execute(f"SELECT {','.join(fields)} FROM public_grade_sections ORDER BY term,college,subject,course_number,section").fetchall()
     target = path.parent / "public_grade_sections.csv"
     temporary = None
@@ -298,7 +302,7 @@ def show() -> None:
     if not DB_PATH.exists():
         print("No database yet. Run 'python pipeline.py download' and 'python pipeline.py import-pdf'.")
         return
-    with sqlite3.connect(DB_PATH) as con:
+    with closing(sqlite3.connect(DB_PATH)) as con, con:
         for subject, count, flag_count in con.execute("""
             SELECT subject, COUNT(*), SUM(quality_status='needs_review')
             FROM grade_sections GROUP BY subject ORDER BY subject"""):
@@ -365,7 +369,7 @@ def main():
                 content = args.pdf.read_bytes()
                 metadata = validate_metadata(read_pdf_pages(args.pdf), year=args.year, semester=args.semester, college=args.college, college_name=args.college_name)
                 migrate(args.db)
-                with sqlite3.connect(args.db) as con:
+                with closing(sqlite3.connect(args.db)) as con, con:
                     register_source(con, content, metadata)
             print(json.dumps(revalidate(args.db), indent=2))
         elif args.action == "show":

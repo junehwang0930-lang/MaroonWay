@@ -5,6 +5,8 @@ Needs: data/maroonway.db and data/manual_instructor_reviews.csv
 """
 from __future__ import annotations
 
+from contextlib import closing
+
 import csv
 import sqlite3
 from pathlib import Path
@@ -30,11 +32,11 @@ def main() -> None:
 
     # Make a backup just once. Re-running the script will not replace it.
     if not BACKUP_PATH.exists():
-        with sqlite3.connect(DB_PATH) as source, sqlite3.connect(BACKUP_PATH) as target:
+        with closing(sqlite3.connect(DB_PATH)) as source, closing(sqlite3.connect(BACKUP_PATH)) as target:
             source.backup(target)
         print(f"Backup created: {BACKUP_PATH}")
 
-    with sqlite3.connect(DB_PATH) as con:
+    with closing(sqlite3.connect(DB_PATH)) as con, con:
         con.row_factory = sqlite3.Row
         existing_columns = {r[1] for r in con.execute("PRAGMA table_info(grade_sections)")}
         for column in ("reviewed_instructor_name", "name_review_status", "name_review_note"):

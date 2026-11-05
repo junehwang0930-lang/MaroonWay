@@ -1,3 +1,4 @@
+from contextlib import closing
 import sqlite3
 from pathlib import Path
 
@@ -10,24 +11,22 @@ subject = "STAT"
 course = "211"
 
 # Connect to SQLite
-connection = sqlite3.connect(DB_PATH.resolve().as_uri() + "?mode=ro", uri=True)
+with closing(sqlite3.connect(DB_PATH.resolve().as_uri() + "?mode=ro", uri=True)) as connection:
 
-# Search for historical sections
-query = """
-SELECT
-    section,
-    instructor_as_reported,
-    gpa_reported,
-    af_total
-FROM public_grade_sections
-WHERE subject = ? AND course_number = ?
-ORDER BY gpa_reported DESC;
-"""
+    # Search for historical sections
+    query = """
+    SELECT
+        section,
+        instructor_as_reported,
+        gpa_reported,
+        af_total
+    FROM public_grade_sections
+    WHERE subject = ? AND course_number = ?
+    ORDER BY gpa_reported DESC;
+    """
 
-cursor = connection.execute(query, (subject, course))
+    cursor = connection.execute(query, (subject, course))
 
-# Print each result
-for row in cursor:
-    print(row)
-
-connection.close()
+    # Print each result
+    for row in cursor:
+        print(row)
