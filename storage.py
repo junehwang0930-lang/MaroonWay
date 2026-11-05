@@ -98,7 +98,7 @@ def _migrate_v2(path):
         con.close()
 
 
-def migrate(path):
+def _migrate_v3(path):
     """Install policy v3 without promoting historical audits or editing source rows."""
     path = Path(path)
     existing_v2 = False
@@ -141,20 +141,35 @@ def migrate(path):
                 raise RuntimeError('Policy migration foreign-key check failed')
 
 
-def blocking_issues(issues, row):
+def migrate(path):
+    """Install versioned changes with backups, preserving all original rows."""
+    _migrate_v3(path)
+    from instructor_reviews import install_schema
+    install_schema(path)
+
+
+def blocking_issues(issues, row, con=None):
     """Retain GPA warnings as evidence, but separate them from integrity failures."""
     allowed = {'Reported GPA does not match A-F counts', 'No letter-graded students to compute GPA'}
     if row['af_total'] == 0:
         allowed.add('GPA missing from report')
+    if con is not None:
+        from instructor_reviews import MISSING_INITIAL, matching_review
+        if MISSING_INITIAL in issues and matching_review(con, row):
+            allowed.add(MISSING_INITIAL)
     return [issue for issue in issues if issue not in allowed]
 
 
 def record_validation(con, run_id, row, issues):
     """Append a fresh policy audit; never relabel or overwrite an old audit."""
-    status = 'needs_review' if blocking_issues(issues, row) else 'checks_passed'
+    status = 'needs_review' if blocking_issues(issues, row, con) else 'checks_passed'
     cursor = con.execute('insert into grade_validations (run_id,grade_section_id,status,issues_json,snapshot_json) values (?,?,?,?,?)',
                          (run_id,row['id'],status,json.dumps(issues),snapshot(row)))
     con.execute('insert into grade_validation_policies values (?,3)', (cursor.lastrowid,))
+    from instructor_reviews import MISSING_INITIAL, matching_review
+    review = matching_review(con, row) if MISSING_INITIAL in issues else None
+    if review:
+        con.execute('insert into grade_validation_instructor_reviews values (?,?,?)', (cursor.lastrowid,review[0],MISSING_INITIAL))
     return status
 
 
@@ -247,7 +262,7 @@ def revalidate(path):
                 actual=parsed.get((row['subject'],row['course_number'],row['section']))
                 if meta.term!=row['term'] or meta.college!=row['college']:
                     issues.append('Source metadata differs from stored term/college')
-                if not actual or blocking_issues(actual.issues, row) or actual.source_page!=row['source_page'] or not matches_source(row, actual):
+                if not actual or blocking_issues(actual.issues, row, con) or actual.source_page!=row['source_page'] or not matches_source(row, actual):
                     issues.append('Stored row differs from verified PDF extraction or source row needs review')
             if con.execute('select 1 from import_conflicts where grade_section_id=?',(row['id'],)).fetchone():
                 issues.append('Unresolved conflicting import; original row retained')

@@ -19,3 +19,5 @@ data/*.csv.tmp
 
 # Append-only GPA investigations remain local.
 data/gpa_investigations/
+
+!data/user_confirmed_instructors.csv

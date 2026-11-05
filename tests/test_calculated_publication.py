@@ -111,6 +111,11 @@ class CalculatedPublicationTests(unittest.TestCase):
         self.import_rows(GOOD)
         with closing(sqlite3.connect(self.db)) as con, con:
             before = con.execute('select * from grade_sections').fetchall()
+            # Reconstruct an actual v2 database, including removal of v4 evidence.
+            con.execute('drop view source_verified_grade_sections')
+            con.execute('drop table grade_validation_instructor_reviews')
+            con.execute('drop table instructor_reviews')
+            con.execute('delete from schema_migrations where version=4')
             con.execute('drop table grade_validation_policies')
             con.execute('drop view public_grade_sections')
             con.execute('create view public_grade_sections as select * from grade_sections')

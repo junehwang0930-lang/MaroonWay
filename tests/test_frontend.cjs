@@ -132,3 +132,20 @@ test('absolute GPA difference stays positive when TAMU reported GPA is higher',a
     const html=fs.readFileSync(path.join(__dirname,'../frontend/index.html'),'utf8');
     assert.match(html,/<th>Absolute GPA Difference<\/th>/);
 });
+
+test('user-confirmed names preserve original text and initial-only scope in both views',async()=>{
+    const h=harness();const payload=data('STAT 201');
+    const one={...payload.sections[0],section:'504',instructor_as_reported:'HERNANDEZ',instructor_display_name:'HERNANDEZ I',instructor_review_evidence:'user_confirmed',instructor_review_scope:'initial_only'};
+    const two={...one,section:'507'};payload.sections=[one,two];payload.section_count=2;
+    const promise=h.search();h.calls[0].resolve(ok(payload));await promise;
+    const row=h.get('#results').children[0];
+    assert.match(row.children[2].textContent,/HERNANDEZ I/);
+    assert.match(row.children[2].textContent,/initial only/);
+    assert.match(row.children[2].textContent,/original: HERNANDEZ/);
+    for(const item of h.get('#results').children){
+        const checkbox=item.children[0].children[0];checkbox.checked=true;checkbox.listeners.change();
+    }
+    h.get('#compare-button').listeners.click();
+    const text=h.get('#compare-results').children.map(r=>r.children.map(c=>c.textContent).join(' ')).join(' ');
+    assert.match(text,/user-confirmed/);assert.match(text,/initial only/);
+});

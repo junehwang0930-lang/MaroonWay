@@ -240,3 +240,7 @@ python scripts/investigate_gpa.py --pdf reports/spring_2026_arts_and_sciences.pd
 ```
 
 Calculated GPA means an A–F headcount average, not the Registrar's official GPA. The command never replaces existing reports. Official credit/rule evidence was inaccessible during this investigation; unexplained cases remain unresolved.
+
+## Exact user-confirmed instructor reviews
+
+Four Spring 2026 AT confirmations are provided in `data/user_confirmed_instructors.csv`, separately from the preserved candidate CSV. See [the Korean application and safety guide](docs/user-confirmed-instructor-reviews.md). These are user confirmations, not independent TAMU identity verification. HERNANDEZ has only initial I confirmed. Apply explicitly with `--confirmations` and revalidate sources; no original instructor text, grade data or quality status is overwritten.

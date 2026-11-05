@@ -8,6 +8,9 @@ from __future__ import annotations
 from contextlib import closing
 
 import csv
+import argparse
+import json
+import sys
 import sqlite3
 from pathlib import Path
 
@@ -20,6 +23,18 @@ EXPORT_PATH = DATA / "grade_sections_reviewed.csv"
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--db', type=Path, default=DB_PATH)
+    parser.add_argument('--confirmations', type=Path, help='Append exact user-confirmed records; do not change original names')
+    args = parser.parse_args()
+    if args.confirmations:
+        sys.path.insert(0, str(ROOT))
+        from instructor_reviews import apply_confirmations
+        print(json.dumps(apply_confirmations(args.db, args.confirmations), indent=2))
+        print('Confirmations recorded only. Revalidate preserved PDF sources before publication.')
+        return
+    if args.db != DB_PATH:
+        parser.error('--db is supported with --confirmations; legacy mode uses its documented project paths')
     if not DB_PATH.is_file():
         raise SystemExit("Missing data/maroonway.db — first run: py pipeline.py import-pdf")
     if not REVIEWS_PATH.is_file():

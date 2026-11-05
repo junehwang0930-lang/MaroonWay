@@ -30,6 +30,13 @@ function discrepancyLabel(section) {
     return section.gpa_discrepancy ? "Difference flagged" : "No difference flagged";
 }
 
+// Display confirmation scope without changing or hiding the published source name.
+function instructorLabel(section) {
+    if (section.instructor_review_evidence !== "user_confirmed") return section.instructor_as_reported;
+    const scope = section.instructor_review_scope === "initial_only" ? ", initial only" : "";
+    return `${section.instructor_display_name} (user-confirmed${scope}; original: ${section.instructor_as_reported})`;
+}
+
 // Create a colored grade bar
 function createGradeBar(section) {
     const bar = document.createElement("div");
@@ -115,8 +122,8 @@ compareButton.addEventListener("click", function() {
 
     addCompareRow(
         "Instructor",
-        left.instructor_as_reported,
-        right.instructor_as_reported
+        instructorLabel(left),
+        instructorLabel(right)
     );
 
     addCompareRow(
@@ -269,7 +276,7 @@ form.addEventListener("submit", async function(event) {
             // Regular table columns
             const values = [
                 `${section.college} · ${section.section}`,
-                section.instructor_as_reported,
+                instructorLabel(section),
                 formatGpa(section.gpa_calculated),
                 formatGpa(section.gpa_reported),
                 formatGpa(section.gpa_difference),
