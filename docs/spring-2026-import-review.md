@@ -61,3 +61,7 @@ BIOL-491-500 has an exact decimal difference of **0.002** (3.902 versus 3.900). 
 ## Verification
 
 Python 3.12 and 3.14: 52 tests passed, including all previous 48. Node: 4 tests passed. New coverage includes precomposed/decomposed Unicode spelling, Unicode initials, mixed-case names, invalid control/symbol/mark rejection, unchanged GPA/missing-initial checks, and a valid-PDF → SQLite → CSV → revalidation Unicode round trip. Existing data/report fingerprints were checked for preservation.
+
+## Subsequent tolerance policy update
+
+The user approved keeping rows when the absolute GPA difference is **≤ 0.005**. The parser now compares exact rational numbers to avoid floating-point boundary errors. The original 23-case table above remains historical evidence, not a rewritten import log. Under the new rule, BIOL-491-500 (difference 0.002) is within tolerance; the other 22 cases, including all nine reported-zero cases, remain above tolerance. Reported GPAs/counts and all previous DB/import/validation records are unchanged. Missing initials remain reviewable and are not inferred. Existing rows require an explicit revalidation to apply the new policy; this code update does not rewrite old audits.

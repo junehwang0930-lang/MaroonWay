@@ -67,3 +67,22 @@ class RowIntegrityTests(unittest.TestCase):
         for name in ['SMITH 😀 B','SMITH\u202e B','SMITH \u0301 B','SMITH <B>','SMITH; B']:
             with self.subTest(name=name):
                 self.assertIsNone(decode_row(GOOD.replace('SMITH B',name),1))
+
+    def test_gpa_difference_up_to_five_thousandths_is_inclusive(self):
+        for gpa in ['3.498','3.495','3.505']:
+            with self.subTest(gpa=gpa):
+                row=decode_row(GOOD.replace('3.500',gpa),1)
+                self.assertNotIn('Reported GPA does not match A-F counts',row.issues)
+                self.assertEqual(row.gpa,float(gpa))
+
+    def test_gpa_difference_above_tolerance_remains_reviewable(self):
+        for gpa in ['3.494999','3.505001','0.000']:
+            with self.subTest(gpa=gpa):
+                row=decode_row(GOOD.replace('3.500',gpa),1)
+                self.assertIn('Reported GPA does not match A-F counts',row.issues)
+
+    def test_gpa_tolerance_does_not_clear_missing_initial_or_negative_counts(self):
+        row=decode_row(GOOD.replace('3.500','3.505').replace('SMITH B','SMITH'),1)
+        self.assertIn('Instructor name lacks an identifiable final initial',row.issues)
+        bad=decode_row('STAT-211-200 -1 4 0 0 0 3 2.671 0 2 0 0 0 5 SMITH B',1)
+        self.assertIn('Negative count: a',bad.issues)

@@ -18,6 +18,7 @@ import unicodedata
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+from fractions import Fraction
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -31,6 +32,7 @@ PDF_PATH = REPORTS / "spring_2026_arts_and_sciences.pdf"
 OFFICIAL_URL = "https://web-as.tamu.edu/gradereports/Report?year=2026&term=SPRING&college=AT"
 TERM = "2026-SPRING"
 COLLEGE = "AT"  # Arts & Sciences; verify this on downloaded PDF
+GPA_TOLERANCE = Fraction(5, 1000)  # Inclusive absolute GPA difference, not a relative percent.
 COUNT_FIELDS = ("a", "b", "c", "d", "f", "af_total", "i_count", "s_count", "u_count", "q_count", "x_count", "enrollment_total")
 
 # The registrar includes course-section lines such as MATH-151-500.
@@ -135,9 +137,9 @@ def decode_row(text: str, page: int) -> Parsed | None:
     elif not 0 <= gpa <= 4:
         issues.append("GPA outside 0-4 scale")
     elif af_total:
-        calculated = (4 * a + 3 * b + 2 * c + d) / af_total
-        # TAMU truncates reported GPA to three decimals, not always rounds.
-        if abs(calculated - gpa) > 0.002:
+        calculated = Fraction(4 * a + 3 * b + 2 * c + d, af_total)
+        # Compare exact values so 0.005 is included on both sides of the boundary.
+        if abs(calculated - Fraction(raw_gpa)) > GPA_TOLERANCE:
             issues.append("Reported GPA does not match A-F counts")
     else:
         issues.append("No letter-graded students to compute GPA")

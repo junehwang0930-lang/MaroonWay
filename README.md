@@ -138,6 +138,7 @@ The API accepts all supported-format undergraduate subjects and the six supporte
 
 ## Integrity guarantees and remaining limits
 
+- GPA comparison accepts an absolute difference of **0.005 or less**, including the boundary. Original reported GPA/counts are never replaced; larger differences remain reviewable.
 - Negative/non-integer counts, inconsistent totals/GPA, missing initials, duplicate identities, and uncertain extraction prevent publication. Raw evidence is retained for review.
 - Instructor names are buffered to section/page boundaries. Unknown trailing text and page-spanning partial rows go to review rather than being guessed or dropped. Recognized report summary rows are excluded from section names.
 - Each import gets its own UUID/timestamp CSV and database history; legacy review files are never overwritten. Repeated imports do not replace existing source rows. Current public CSV export is an atomic snapshot, not the history store.
