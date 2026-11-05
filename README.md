@@ -99,6 +99,12 @@ node tests/test_frontend.cjs
 
 Regression tests use fictional data and temporary databases, including generated PDFs. They cover count/name parsing, metadata rejection, migration preservation, import history, publication filters, API query behavior, and out-of-order frontend requests. Node.js 18+ is needed only for the frontend tests; the UI itself runs in the browser. These are not full browser end-to-end tests or proof of compatibility with every TAMU report layout. A passing suite does not replace source review.
 
+For Windows/Python 3.14 or stricter resource checks, see [the SQLite/PDF cleanup fix](docs/windows-resource-fix.md). All original 43 tests are retained; five handle-lifecycle regressions bring the current total to 48. To also fail on garbage-collection resource leaks, run:
+
+```bash
+python -W error::ResourceWarning tests/run_checks.py
+```
+
 ## 7. Check quality manually
 
 Before trusting or sharing data through the website:
