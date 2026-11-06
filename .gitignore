@@ -21,3 +21,8 @@ data/*.csv.tmp
 data/gpa_investigations/
 
 !data/user_confirmed_instructors.csv
+
+# Public export snapshots and refresh status remain local.
+data/public_exports/
+data/public_export_status.json
+data/*.json.tmp

@@ -221,7 +221,7 @@ def setup_db(connection: sqlite3.Connection):
     connection.executescript((ROOT / "schema.sql").read_text(encoding="utf-8"))
 
 
-def import_pdf(path: Path, *, year=2026, semester="SPRING", college="AT", college_name="Arts & Sciences") -> None:
+def import_pdf(path: Path, *, year=2026, semester="SPRING", college="AT", college_name="Arts & Sciences") -> dict:
     from storage import migrate, register_source, token, snapshot
     import json
     if not path.is_file():
@@ -292,34 +292,62 @@ def import_pdf(path: Path, *, year=2026, semester="SPRING", college="AT", colleg
             writer = csv.writer(handle)
             writer.writerow(["source_page", "section_code", "issue", "raw_extracted_text"])
             writer.writerows(quality)
-    export_csv()
+    csv_export=export_csv()
     print(f"Import {run_id}: {len(rows)} undergraduate rows; {len(quality)} review items.")
     print(f"Review CSV (preserved per import): {quality_path}")
     print("Original instructor identities and source evidence are retained; only validated rows are public.")
     if not rows:
         raise RuntimeError("No undergraduate rows imported; review history was retained")
+    return csv_export
 
 
-def export_csv(db_path=None) -> None:
-    """Refresh a public snapshot atomically; never replace the legacy evidence CSV."""
+def export_csv(db_path=None) -> dict:
+    """Preserve a current immutable snapshot and explicitly report refresh state."""
     import os
     import tempfile
     path = Path(db_path) if db_path is not None else DB_PATH
     fields = ("term", "college", "subject", "course_number", "section", "instructor_as_reported", *COUNT_FIELDS, "gpa_reported", "gpa_calculated", "gpa_difference", "gpa_discrepancy", "source_page", "source_url", "source_sha256")
     with closing(sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)) as con, con:
         records = con.execute(f"SELECT {','.join(fields)} FROM public_grade_sections ORDER BY term,college,subject,course_number,section").fetchall()
-    target = path.parent / "public_grade_sections.csv"
-    temporary = None
+    from storage import token
+    import json
+    directory=path.parent/'public_exports'
+    directory.mkdir(exist_ok=True)
+    snapshot=directory/(token()+'.csv')
+    target=path.parent/'public_grade_sections.csv'
+    manifest=path.parent/'public_export_status.json'
+    result=dict(status='pending',snapshot=str(snapshot.resolve()),current_csv=str(target.resolve()),error=None)
+
+    def save_status():
+        temporary=None
+        try:
+            with tempfile.NamedTemporaryFile(mode='w',dir=path.parent,suffix='.json.tmp',delete=False,encoding='utf-8') as handle:
+                temporary=Path(handle.name)
+                json.dump(result,handle,indent=2)
+            os.replace(temporary,manifest)
+        finally:
+            if temporary is not None and temporary.exists():temporary.unlink()
+
+    # Every completed database state has a new, immutable export even when the
+    # compatibility filename is held open by Excel on Windows.
+    with snapshot.open('x',newline='',encoding='utf-8') as handle:
+        writer=csv.writer(handle);writer.writerow(fields);writer.writerows(records)
+    save_status()
+    temporary=None
     try:
-        with tempfile.NamedTemporaryFile(mode="w", dir=path.parent, suffix=".csv.tmp", delete=False, newline="", encoding="utf-8") as handle:
-            temporary = Path(handle.name)
-            writer = csv.writer(handle)
-            writer.writerow(fields)
-            writer.writerows(records)
-        os.replace(temporary, target)
+        with tempfile.NamedTemporaryFile(mode='wb',dir=path.parent,suffix='.csv.tmp',delete=False) as handle:
+            temporary=Path(handle.name)
+            handle.write(snapshot.read_bytes())
+        os.replace(temporary,target)
+        result['status']='ready'
+    except OSError as exc:
+        result['error']=str(exc)
     finally:
-        if temporary is not None and temporary.exists():
-            temporary.unlink()
+        if temporary is not None and temporary.exists():temporary.unlink()
+    save_status()
+    if result['status']=='pending':
+        print(f"WARNING: Database saved; public_grade_sections.csv was not refreshed. Current snapshot: {snapshot}. Close CSV readers and retry export-csv.")
+    return result
 
 
 def show() -> None:
@@ -377,13 +405,16 @@ def main():
     audit.add_argument("--semester", choices=["SPRING", "FALL"], default="SPRING")
     audit.add_argument("--college", default="AT")
     audit.add_argument("--college-name", default="Arts & Sciences")
+    exporter=commands.add_parser("export-csv", help="Refresh CSV only; do not reimport or revalidate")
+    exporter.add_argument("--db",type=Path,default=DB_PATH)
     commands.add_parser("show", help="Print a quick database summary")
     args = parser.parse_args()
     try:
         if args.action == "download":
             download()
         elif args.action == "import-pdf":
-            import_pdf(Path(args.pdf), year=args.year, semester=args.semester, college=args.college, college_name=args.college_name)
+            result=import_pdf(Path(args.pdf), year=args.year, semester=args.semester, college=args.college, college_name=args.college_name)
+            if result["status"]=="pending":raise SystemExit(2)
         elif args.action == "revalidate":
             from storage import migrate, register_source, revalidate
             import json
@@ -395,7 +426,14 @@ def main():
                 migrate(args.db)
                 with closing(sqlite3.connect(args.db)) as con, con:
                     register_source(con, content, metadata)
-            print(json.dumps(revalidate(args.db), indent=2))
+            result=revalidate(args.db)
+            print(json.dumps(result, indent=2))
+            if result["public_export"]["status"]=="pending":raise SystemExit(2)
+        elif args.action == "export-csv":
+            import json
+            result=export_csv(args.db)
+            print(json.dumps(result,indent=2))
+            if result["status"]=="pending":raise SystemExit(2)
         elif args.action == "show":
             show()
     except (RuntimeError, FileNotFoundError, ValueError) as exc:

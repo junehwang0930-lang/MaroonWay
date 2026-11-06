@@ -275,6 +275,6 @@ def revalidate(path):
             writer.writerow(['id','term','college','subject','course_number','section','status','issues','source_sha256','source_page'])
             writer.writerows(results)
     from pipeline import export_csv
-    export_csv(path)
+    public_export=export_csv(path)
     passed=sum(r[6]=='checks_passed' for r in results)
-    return dict(run_id=run_id,total=len(results),checks_passed=passed,needs_review=len(results)-passed,report=str(report))
+    return dict(run_id=run_id,total=len(results),checks_passed=passed,needs_review=len(results)-passed,report=str(report),public_export=public_export)

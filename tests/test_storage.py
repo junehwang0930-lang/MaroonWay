@@ -196,3 +196,35 @@ class StorageTests(unittest.TestCase):
             self.assertEqual(con.execute('select instructor_as_reported from public_grade_sections').fetchone()[0],name)
         with (self.root/'public_grade_sections.csv').open(encoding='utf-8') as handle:
             self.assertEqual(next(csv.DictReader(handle))['instructor_as_reported'],name)
+
+    def test_locked_public_csv_keeps_a_fresh_snapshot_and_explicit_pending_state(self):
+        import os,json
+        self.import_rows()
+        old=(self.root/'public_grade_sections.csv').read_bytes()
+        with closing(sqlite3.connect(self.db)) as con,con:
+            con.execute('update grade_sections set a=-1')
+        real_replace=os.replace
+        def locked(source,target):
+            if Path(target).name=='public_grade_sections.csv':raise PermissionError('Excel lock fixture')
+            return real_replace(source,target)
+        with patch('os.replace',side_effect=locked):result=p.export_csv()
+        self.assertEqual(result['status'],'pending')
+        self.assertEqual((self.root/'public_grade_sections.csv').read_bytes(),old)
+        with Path(result['snapshot']).open() as handle:self.assertEqual(list(csv.DictReader(handle)),[])
+        self.assertEqual(json.loads((self.root/'public_export_status.json').read_text())['status'],'pending')
+        result=p.export_csv()
+        self.assertEqual(result['status'],'ready')
+        self.assertEqual(len(list((self.root/'public_exports').glob('*.csv'))),3)
+
+    def test_export_only_cli_reports_partial_refresh_without_touching_database(self):
+        import os
+        self.import_rows()
+        before=self.db.read_bytes()
+        real_replace=os.replace
+        def locked(source,target):
+            if Path(target).name=='public_grade_sections.csv':raise PermissionError('Excel lock fixture')
+            return real_replace(source,target)
+        with patch('os.replace',side_effect=locked),patch('sys.argv',['pipeline.py','export-csv','--db',str(self.db)]),contextlib.redirect_stdout(io.StringIO()),self.assertRaises(SystemExit) as stopped:
+            p.main()
+        self.assertEqual(stopped.exception.code,2)
+        self.assertEqual(self.db.read_bytes(),before)
