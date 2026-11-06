@@ -128,3 +128,24 @@ class InstructorReviewTests(unittest.TestCase):
         self.assertEqual(len(list(self.root.glob('*.before-v4-*.db'))),1)
         self.assertEqual(self.rows('select * from grade_sections'),self.original)
         self.assertEqual(self.rows('select * from grade_validations'),audits)
+
+    def test_conflicting_duplicate_keys_are_rejected_before_any_write(self):
+        from instructor_reviews import apply_confirmations
+        with self.csv.open(newline='') as handle:records=list(csv.DictReader(handle))
+        conflicting=dict(records[2],reviewed_instructor_name='HERNANDEZ J',initial='J')
+        with self.csv.open('w',newline='') as handle:
+            writer=csv.DictWriter(handle,fieldnames=FIELDS);writer.writeheader();writer.writerows([records[2],conflicting])
+        before=self.db.read_bytes()
+        with self.assertRaisesRegex(ValueError,'Conflicting'):
+            apply_confirmations(self.db,self.csv)
+        self.assertEqual(self.db.read_bytes(),before)
+        self.assertEqual(self.rows('select count(*) from instructor_reviews')[0][0],0)
+
+    def test_identical_duplicates_are_applied_once_and_repeated_safely(self):
+        from instructor_reviews import apply_confirmations
+        with self.csv.open(newline='') as handle:record=list(csv.DictReader(handle))[2]
+        with self.csv.open('w',newline='') as handle:
+            writer=csv.DictWriter(handle,fieldnames=FIELDS);writer.writeheader();writer.writerows([record,record])
+        self.assertEqual(apply_confirmations(self.db,self.csv)['applied'],1)
+        self.assertEqual(apply_confirmations(self.db,self.csv)['applied'],0)
+        self.assertEqual(self.rows('select count(*) from instructor_reviews')[0][0],1)

@@ -76,6 +76,7 @@ def apply_confirmations(db_path, csv_path):
     if not db_path.is_file():
         raise FileNotFoundError(db_path)
     records=[]
+    seen={}
     with Path(csv_path).open(newline='',encoding='utf-8-sig') as handle:
         reader=csv.DictReader(handle)
         if reader.fieldnames != list(CSV_FIELDS):
@@ -93,6 +94,12 @@ def apply_confirmations(db_path, csv_path):
             if row['name_scope']=='initial_only' and row['reviewed_instructor_name']!=row['instructor_as_reported']+' '+row['initial']:
                 raise ValueError(f'Initial-only confirmation cannot invent a full name at line {line}')
             values=(row['term'],row['college'],*section.groups(),row['instructor_as_reported'],row['reviewed_instructor_name'],row['initial'],row['name_scope'],row['evidence'],row['review_note'])
+            key=values[:6]
+            if key in seen:
+                if seen[key] != values:
+                    raise ValueError(f'Conflicting confirmations for the same exact source key at line {line}')
+                continue
+            seen[key]=values
             records.append((row['section_code'],values))
     migrate(db_path)
     result={'matched':0,'applied':0,'unmatched':[]}
