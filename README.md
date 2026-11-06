@@ -105,7 +105,7 @@ node tests/test_frontend.cjs
 
 Regression tests use fictional data and temporary databases, including generated PDFs. They cover count/name parsing, metadata rejection, migration preservation, import history, publication filters, API query behavior, and out-of-order frontend requests. Node.js 18+ is needed only for the frontend tests; the UI itself runs in the browser. These are not full browser end-to-end tests or proof of compatibility with every TAMU report layout. A passing suite does not replace source review.
 
-For Windows/Python 3.14 or stricter resource checks, see [the SQLite/PDF cleanup fix](docs/windows-resource-fix.md). All original 43 tests are retained; subsequent integrity and GPA tests are also included. The current total is 80 Python tests and 9 JavaScript tests. To also fail on garbage-collection resource leaks, run:
+For Windows/Python 3.14 or stricter resource checks, see [the SQLite/PDF cleanup fix](docs/windows-resource-fix.md). All original 43 tests are retained; subsequent integrity and GPA tests are also included. The current total is 96 Python tests and 10 JavaScript tests. To also fail on garbage-collection resource leaks, run:
 
 ```bash
 python -W error::ResourceWarning tests/run_checks.py
@@ -244,3 +244,7 @@ Calculated GPA means an A–F headcount average, not the Registrar's official GP
 ## Exact user-confirmed instructor reviews
 
 Four Spring 2026 AT confirmations are provided in `data/user_confirmed_instructors.csv`, separately from the preserved candidate CSV. See [the application and safety guide](docs/user-confirmed-instructor-reviews.md). These are user confirmations, not independent TAMU identity verification. HERNANDEZ has only initial I confirmed. Apply explicitly with `--confirmations` and revalidate sources; no original instructor text, grade data or quality status is overwritten.
+
+## Export recovery and recent bug fixes
+
+See [the four-fix verification guide](docs/bug-fix-verification.md) for individual commits and safety behavior. Public export attempts preserve a unique current snapshot and write `data/public_export_status.json`. If Excel blocks the convenience CSV, the CLI reports `pending` and exits with code 2; close the reader and run `python pipeline.py export-csv --db data/maroonway.db`. Do not reimport solely to refresh a CSV. Historical review CSVs with incomplete provenance are explicitly labeled unverified.

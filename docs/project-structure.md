@@ -137,3 +137,23 @@ python scripts/apply_name_reviews.py
 Analysis scripts retain their existing in-code term/course selection variables. Manual review requires the existing database and review inputs. **Folder cleanup does not require running these tools on real user data.**
 
 The three moved scripts resolve the project root from their own file locations regardless of the calling terminal's directory. Tests run relocated scripts against temporary databases rather than substituting the real DB.
+
+## Current additions after the original cleanup
+
+| Location | Responsibility |
+| --- | --- |
+| `AGENTS.md` | English-only repository writing policy |
+| `gpa_review.py` | Explicit, append-only GPA investigation records |
+| `instructor_reviews.py` | Exact user confirmations and audit bindings |
+| `scripts/investigate_gpa.py` | Read-only PDF investigation CSVs and historical provenance checks |
+| `tests/test_calculated_publication.py` | Calculated GPA eligibility and source guards |
+| `tests/test_gpa_review.py`, `tests/test_gpa_report.py` | Investigation storage/report regressions |
+| `tests/test_instructor_reviews.py`, `tests/test_instructor_cli.py` | Confirmation matching and safe command-line application |
+| `docs/calculated-gpa-methodology.md` | Current GPA policy and local upgrade instructions |
+| `docs/gpa-discrepancy-investigation.md`, `docs/gpa-official-evidence.md`, `docs/spring-2026-import-review.md` | Source investigation and evidence limitations |
+| `docs/user-confirmed-instructor-reviews.md` | Safe confirmation application |
+| `docs/bug-fix-verification.md` | Individual bug commits and export recovery |
+| `data/user_confirmed_instructors.csv` | Four explicit user confirmations; original candidate CSV stays separate |
+| `data/public_exports/`, `data/public_export_status.json` | Ignored local export history and refresh state; never deletion candidates |
+
+Core entry points remain at the root, operational helpers in `scripts/`, tests in `tests/`, and guides in `docs/`. Local generated data is kept apart from tracked review inputs.
