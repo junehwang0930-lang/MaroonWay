@@ -243,4 +243,4 @@ Calculated GPA means an A–F headcount average, not the Registrar's official GP
 
 ## Exact user-confirmed instructor reviews
 
-Four Spring 2026 AT confirmations are provided in `data/user_confirmed_instructors.csv`, separately from the preserved candidate CSV. See [the Korean application and safety guide](docs/user-confirmed-instructor-reviews.md). These are user confirmations, not independent TAMU identity verification. HERNANDEZ has only initial I confirmed. Apply explicitly with `--confirmations` and revalidate sources; no original instructor text, grade data or quality status is overwritten.
+Four Spring 2026 AT confirmations are provided in `data/user_confirmed_instructors.csv`, separately from the preserved candidate CSV. See [the application and safety guide](docs/user-confirmed-instructor-reviews.md). These are user confirmations, not independent TAMU identity verification. HERNANDEZ has only initial I confirmed. Apply explicitly with `--confirmations` and revalidate sources; no original instructor text, grade data or quality status is overwritten.
