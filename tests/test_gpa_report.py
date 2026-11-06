@@ -40,3 +40,22 @@ class GPAReportTests(unittest.TestCase):
             self.assertEqual([r['review_item_number'] for r in rows],['1','2'])
             self.assertEqual([r['review_item'] for r in rows],['GPA mismatch','Other source concern'])
             self.assertEqual(review.read_bytes(),before)
+
+    def test_mismatched_review_context_is_rejected_without_output(self):
+        import hashlib
+        for context in ['2025-FALL,AT,','2026-SPRING,EN,','2026-SPRING,AT,wrong-hash']:
+            with self.subTest(context=context),tempfile.TemporaryDirectory() as tmp:
+                root=Path(tmp);pdf=root/'source.pdf';write_pdf(pdf,HEADER+GOOD)
+                review=root/'review.csv';review.write_text('term,college,source_sha256,section_code,issue\n'+context+',STAT-211-200,Old issue\n')
+                result=subprocess.run([sys.executable,str(ROOT/'scripts/investigate_gpa.py'),'--pdf',str(pdf),'--review-csv',str(review),'--output',str(root/'out')],capture_output=True,text=True)
+                self.assertNotEqual(result.returncode,0)
+                self.assertFalse(list(root.glob('out/*.csv')))
+
+    def test_legacy_review_context_is_explicitly_unverified(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);pdf=root/'source.pdf';write_pdf(pdf,HEADER+GOOD)
+            review=root/'review.csv';review.write_text('section_code,issue\nSTAT-211-200,Historical note\n')
+            result=subprocess.run([sys.executable,str(ROOT/'scripts/investigate_gpa.py'),'--pdf',str(pdf),'--review-csv',str(review),'--output',str(root/'out')],capture_output=True,text=True)
+            self.assertEqual(result.returncode,0,result.stderr)
+            with next((root/'out').glob('*.csv')).open(encoding='utf-8-sig') as h:row=next(csv.DictReader(h))
+            self.assertEqual(row['review_association'],'unverified')
