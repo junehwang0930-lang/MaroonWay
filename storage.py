@@ -177,8 +177,16 @@ def register_source(con, content, metadata):
     digest=hashlib.sha256(content).hexdigest()
     encoded=json.dumps(vars(metadata),sort_keys=True)
     existing=con.execute('select content,metadata_json from source_documents where sha256=?',(digest,)).fetchone()
-    if existing and (existing[0]!=content or existing[1]!=encoded):
-        raise ValueError('Same source hash has conflicting metadata; import stopped')
+    if existing:
+        from report_metadata import canonical
+        stored=json.loads(existing[1])
+        requested=json.loads(encoded)
+        # Use the same full-name equivalence as PDF header validation, without
+        # rewriting stored evidence or relaxing year/semester/college identity.
+        stored['college_name']=canonical(stored.get('college_name',''))
+        requested['college_name']=canonical(requested.get('college_name',''))
+        if existing[0]!=content or stored!=requested:
+            raise ValueError('Same source hash has conflicting metadata; import stopped')
     con.execute('insert or ignore into source_documents values (?,?,?)',(digest,content,encoded))
     return digest
 

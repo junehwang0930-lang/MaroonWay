@@ -228,3 +228,25 @@ class StorageTests(unittest.TestCase):
             p.main()
         self.assertEqual(stopped.exception.code,2)
         self.assertEqual(self.db.read_bytes(),before)
+
+    def test_equivalent_college_name_reimports_preserve_original_metadata(self):
+        import json
+        self.import_rows()
+        with closing(sqlite3.connect(self.db)) as con:
+            original=con.execute('select * from source_documents').fetchall()
+            section=con.execute('select * from grade_sections').fetchall()
+        with patch.object(p,'read_pdf_pages',return_value=[HEADER+GOOD]),contextlib.redirect_stdout(io.StringIO()):
+            p.import_pdf(self.pdf,college_name='ARTS AND SCIENCES')
+        with closing(sqlite3.connect(self.db)) as con:
+            self.assertEqual(con.execute('select * from source_documents').fetchall(),original)
+            self.assertEqual(con.execute('select * from grade_sections').fetchall(),section)
+            self.assertEqual(con.execute('select count(*) from import_conflicts').fetchone()[0],0)
+
+    def test_source_registration_still_rejects_genuine_metadata_conflicts(self):
+        from storage import register_source
+        from report_metadata import ReportMetadata
+        self.import_rows()
+        with closing(sqlite3.connect(self.db)) as con:
+            for metadata in [ReportMetadata(2025,'SPRING','AT','Arts & Sciences'),ReportMetadata(2026,'SPRING','EN','Engineering')]:
+                with self.subTest(metadata=metadata),self.assertRaises(ValueError):
+                    register_source(con,self.pdf.read_bytes(),metadata)
